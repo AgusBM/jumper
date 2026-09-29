@@ -2,6 +2,8 @@
 
 # Jumper
 
+[English](README.md) · [中文](README.zh.md)
+
 Design appearances. Create worlds. Train motions for **Jumper**, a 22-DoF hexapod.
 
 Open this repository in an AI coding assistant and describe what you want in one sentence.
@@ -31,7 +33,7 @@ The linked projects and guides below give your assistant the workflows to follow
 
 ## One sentence to train a motion
 
-> Train a stable tripod gait for Jumper, then replay and evaluate the training result.
+> Train a stable tripod gait for Jumper, replay and evaluate the result, then package it as an `.app`.
 
 | | | |
 |:-:|:-:|:-:|
@@ -48,6 +50,7 @@ The images are existing appearance and scene examples; the motion clips show tra
 |---|---|
 | [jumper-design](https://github.com/KingKongRobotics/jumper-design) | Appearance and scene creation; your assistant reads its [instructions](https://github.com/KingKongRobotics/jumper-design/blob/main/AGENTS.md) and uses its tools as needed. |
 | [Training tutorial](docs/TUTORIAL.md) | Motion training, replay and policy export in this repository. |
+| [Motion bundles](deploy/BUNDLE.md) | Package trained motions and their controller as an `.app`; see the [build guide](deploy/README.md) for prerequisites. |
 | [Project guide](docs/PROJECT_GUIDE.md) | Setup, current capabilities and further documentation. |
 
 Training builds on [mjlab](https://github.com/mujocolab/mjlab),

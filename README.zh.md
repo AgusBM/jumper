@@ -1,8 +1,10 @@
-<!-- tracks: README.md @ sha256:d0ef6ce22d9a634e -->
+<!-- tracks: README.md @ sha256:10f2519fe8309613 -->
 
 ![Jumper 插图](docs/media/jumper-hero.png)
 
 # Jumper
+
+[English](README.md) · [中文](README.zh.md)
 
 为 **Jumper** —— 一台 22 自由度六足机器人 —— 设计外观、创造场景、训练动作。
 
@@ -33,7 +35,7 @@
 
 ## 一句话，训练动作
 
-> 为 Jumper 训练稳定的 tripod 步态，并回放和评估训练结果。
+> 为 Jumper 训练稳定的三足步态，回放并评估效果，然后打包生成 `.app` 动作包。
 
 | | | |
 |:-:|:-:|:-:|
@@ -50,6 +52,7 @@
 |---|---|
 | [jumper-design](https://github.com/KingKongRobotics/jumper-design) | 外观与场景生成；AI 读取其[工作说明](https://github.com/KingKongRobotics/jumper-design/blob/main/AGENTS.md)，按需使用工具。 |
 | [训练教程](docs/TUTORIAL.zh.md) | 本仓库中的动作训练、回放与策略导出。 |
+| [动作包格式](deploy/BUNDLE.md) | 将训练好的动作及控制器打包为 `.app`；环境要求见[构建指南](deploy/README.md)。 |
 | [项目指南](docs/PROJECT_GUIDE.zh.md) | 环境安装、当前能力和更多文档。 |
 
 训练基于 [mjlab](https://github.com/mujocolab/mjlab)、
