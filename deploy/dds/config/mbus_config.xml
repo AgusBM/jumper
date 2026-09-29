@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+    <Domain Id="0">
+        <Compatibility>
+        </Compatibility>
+
+        <General>
+            <!-- 本域只走 lo：domain 0 是纯本机 IPC，跨机流量一律走 domain 2。
+                 只绑 lo 的附带好处是本域彻底不受弱网影响，也不会把本机 topic
+                 暴露到 wlan0/eth0 上。 -->
+            <Interfaces>
+                <NetworkInterface name="lo"/>
+            </Interfaces>
+            <!-- lo 在 Linux 上没有 IFF_MULTICAST，组播本来就用不了，如实写 false，
+                 免得看配置的人以为本域还有组播发现这条路。 -->
+            <AllowMulticast>false</AllowMulticast>
+        </General>
+
+        <Discovery>
+            <!-- 组播在 lo 上不可用，因此这个 peer 是本域唯一的发现手段（不再是
+                 "wlan0/eth0 没起来时的兜底"）。PruneDelay=inf 让本机发现端口被
+                 一直探测：否则晚于 InitialLocatorPruneDelay(30s) 启动的进程，
+                 会因为 peer 已被剪掉而永远发现不了先启动的 participant。 -->
+            <Peers>
+                <Peer Address="127.0.0.1" PruneDelay="inf"/>
+            </Peers>
+            <LeaseDuration>10s</LeaseDuration>
+        </Discovery>
+
+        <Internal>
+            <HeartbeatInterval>2s</HeartbeatInterval>
+        </Internal>
+
+        <Sizing>
+        </Sizing>
+
+        <Threads>
+        </Threads>
+
+        <Tracing>
+            <!-- <Verbosity>finer</Verbosity>
+            <OutputFile>cyclonedds_${CYCLONEDDS_PID}.log</OutputFile> -->
+        </Tracing>
+    </Domain>
+
+    <!-- Domain 1: Video streaming — shared memory for local, UDP for remote -->
+    <Domain Id="1">
+        <SharedMemory>
+            <Enable>true</Enable>
+            <LogLevel>info</LogLevel>
+        </SharedMemory>
+
+        <General>
+            <Interfaces>
+                <NetworkInterface name="lo"/>
+                <!-- <NetworkInterface name="wlan0" presence_required="false"/> -->
+                <!-- <NetworkInterface name="eth0" presence_required="false"/> -->
+            </Interfaces>
+            <AllowMulticast>true</AllowMulticast>
+        </General>
+
+        <Discovery>
+            <!-- Probe local discovery ports forever: a process started before
+                 wlan0/eth0 is up selects only lo, which has no multicast on Linux;
+                 without a never-pruned localhost peer it can never discover
+                 participants started more than InitialLocatorPruneDelay (30s) later. -->
+            <LeaseDuration>10s</LeaseDuration>
+        </Discovery>
+
+        <Internal>
+            <HeartbeatInterval>2s</HeartbeatInterval>
+        </Internal>
+
+        <Tracing>
+        </Tracing>
+    </Domain>
+    <!-- Domain 2: 跨机弱网域（只走 wlan0/eth0，无 lo）。robot_control 跑在这里，
+         QoS 是 RELIABLE + KEEP_ALL（见 mbus_qos.xml 的 RobotControl_Control）。
+         QoS 只声明"要可达"，能不能在下一个控制周期内把丢的帧补回来，取决于本段。 -->
+    <Domain Id="2">
+        <Compatibility>
+        </Compatibility>
+
+        <General>
+            <Interfaces>
+                <NetworkInterface name="wlan0" presence_required="false"/>
+                <NetworkInterface name="eth0" presence_required="false"/>
+            </Interfaces>
+            <!-- spdp：组播只用于 SPDP 发现，SEDP 和用户数据一律走单播。
+                 Wi-Fi 的组播帧以最低基础速率发送且没有 802.11 层 ARQ（收不到不重发），
+                 弱信号下丢包率远高于单播；RELIABLE 虽然能靠 RTPS 重传补回来，但那是
+                 用一个 NACK 往返去补一条本来就不该丢的帧。改成单播后 802.11 自己的
+                 重传先兜一层，RTPS 重传只处理漏网的。
+                 本域加这一段的初衷是"多播发现"，spdp 正好只保留发现所需的组播。 -->
+            <AllowMulticast>spdp</AllowMulticast>
+        </General>
+
+        <Discovery>
+            <!-- Probe local discovery ports forever: a process started before
+                 wlan0/eth0 is up selects only lo, which has no multicast on Linux;
+                 without a never-pruned localhost peer it can never discover
+                 participants started more than InitialLocatorPruneDelay (30s) later. -->
+            <LeaseDuration>10s</LeaseDuration>
+        </Discovery>
+
+        <Internal>
+            <!-- 弱网重传参数，三个默认值会直接让 RELIABLE 形同虚设：
+                 - HeartbeatInterval：reader 靠 HEARTBEAT 才知道自己缺样本。数据流
+                   连续时 HB 会搭在 DATA 上，但控制流一停（松手静止），最后几帧的
+                   缺失就要等下一个周期心跳 —— 2s 意味着最坏 2s 后才补上，等于
+                   丢了 200 个控制周期。回到 CycloneDDS 默认 100ms，并把周期心跳
+                   收敛到 [20ms, 500ms]。
+                 - NackDelay：reader 发现缺样本后延迟多久发 NACK，默认 100ms
+                   = 10 个控制周期，压到 10ms。
+                 - AutoReschedNackDelay：NACK 或其响应本身丢了之后的重试间隔，
+                   默认 3s，弱网下这是很可能发生的，压到 500ms。
+                 - Watermarks：KEEP_ALL 写端积压超过 WhcHigh 才背压。WhcAdaptive
+                   默认开启，会在重传期间把 WhcHigh 一路收缩到 WhcLow(默认 1kB
+                   ≈ 4 帧)，正好在丢包时把实时控制环卡在 max_blocking_time 上。
+                   这里关掉自适应并给固定水位：一帧 Control 约 256B（含 RTPS 开销），
+                   WhcHigh 64kB ≈ 250 帧 ≈ 2.5s 重传窗口，再长就是拿过期指令喂运控。
+                   注意 WhcAdaptive=false 时 whc_high 恒等于 WhcHighInit，两者必须
+                   一起设；且 WhcHighInit 必须落在 [WhcLow, WhcHigh] 内，否则报
+                   "Invalid watermark settings"，participant 直接建不出来。 -->
+            <HeartbeatInterval min="20ms" max="500ms">100ms</HeartbeatInterval>
+            <NackDelay>10ms</NackDelay>
+            <AutoReschedNackDelay>500ms</AutoReschedNackDelay>
+            <Watermarks>
+                <WhcLow>8 kB</WhcLow>
+                <WhcHigh>64 kB</WhcHigh>
+                <WhcHighInit>64 kB</WhcHighInit>
+                <WhcAdaptive>false</WhcAdaptive>
+            </Watermarks>
+        </Internal>
+
+        <Sizing>
+        </Sizing>
+
+        <Threads>
+        </Threads>
+
+        <Tracing>
+            <!-- <Verbosity>finer</Verbosity>
+            <OutputFile>cyclonedds_${CYCLONEDDS_PID}.log</OutputFile> -->
+        </Tracing>
+    </Domain>
+</CycloneDDS>

@@ -1,0 +1,104 @@
+<!--
+  A minimal model for the framework's own smoke tests, unrelated to any real
+  robot.
+
+  The design goal is not to resemble anything, but to cover every path the
+  framework has to validate at the smallest possible scale:
+    · freejoint        -- reading and writing a floating base's root state
+    · contact          -- feet against the ground, exercising the contact solver
+    · position actuators -- the same PD control form as a real legged robot
+    · sensor           -- framequat / gyro / velocimeter, through the batched
+                          sensordata path
+    · left-right symmetry -- convenient for validating indexing and mirroring
+
+  4 actuated degrees of freedom plus 6 for the base, with primitive geometry
+  throughout (no meshes), so it simulates extremely fast -- suitable as the
+  control group for backend-consistency regressions and throughput benchmarks.
+-->
+<mujoco model="smoke_biped">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+
+  <default>
+    <default class="robot">
+      <joint damping="0.05" armature="0.01"/>
+      <default class="motor">
+        <position kp="60" kv="2.0" forcerange="-20 20"/>
+      </default>
+      <default class="link">
+        <geom type="capsule" size="0.02" density="800" rgba="0.55 0.6 0.68 1"/>
+      </default>
+      <default class="foot">
+        <geom type="sphere" size="0.028" density="800" rgba="0.85 0.6 0.25 1"
+              friction="1.0 0.01 0.01" priority="1" condim="3"/>
+      </default>
+    </default>
+  </default>
+
+  <worldbody>
+    <light pos="0 0 2.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="0 0 0.05" rgba="0.3 0.33 0.36 1"
+          friction="1.0 0.01 0.01" condim="3"/>
+
+    <body name="base" pos="0 0 0.42" childclass="robot">
+      <freejoint name="root"/>
+      <inertial pos="0 0 0" mass="2.0" diaginertia="0.012 0.016 0.010"/>
+      <geom name="torso" type="box" size="0.06 0.045 0.035" rgba="0.42 0.47 0.55 1"/>
+      <site name="imu" pos="0 0 0" size="0.008"/>
+
+      <body name="L_thigh" pos="0 0.05 -0.035">
+        <joint name="L_hip" axis="0 1 0" range="-1.4 1.4"/>
+        <geom class="link" fromto="0 0 0  0 0 -0.16"/>
+        <body name="L_calf" pos="0 0 -0.16">
+          <joint name="L_knee" axis="0 1 0" range="-2.2 0"/>
+          <geom class="link" fromto="0 0 0  0 0 -0.16"/>
+          <body name="L_foot" pos="0 0 -0.16">
+            <geom name="L_foot_geom" class="foot"/>
+            <site name="L_foot_site" size="0.008"/>
+          </body>
+        </body>
+      </body>
+
+      <body name="R_thigh" pos="0 -0.05 -0.035">
+        <joint name="R_hip" axis="0 1 0" range="-1.4 1.4"/>
+        <geom class="link" fromto="0 0 0  0 0 -0.16"/>
+        <body name="R_calf" pos="0 0 -0.16">
+          <joint name="R_knee" axis="0 1 0" range="-2.2 0"/>
+          <geom class="link" fromto="0 0 0  0 0 -0.16"/>
+          <body name="R_foot" pos="0 0 -0.16">
+            <geom name="R_foot_geom" class="foot"/>
+            <site name="R_foot_site" size="0.008"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position class="motor" name="L_hip_ctrl"  joint="L_hip"  ctrlrange="-1.4 1.4"/>
+    <position class="motor" name="L_knee_ctrl" joint="L_knee" ctrlrange="-2.2 0"/>
+    <position class="motor" name="R_hip_ctrl"  joint="R_hip"  ctrlrange="-1.4 1.4"/>
+    <position class="motor" name="R_knee_ctrl" joint="R_knee" ctrlrange="-2.2 0"/>
+  </actuator>
+
+  <sensor>
+    <framequat      name="base_quat"  objtype="site" objname="imu"/>
+    <gyro           name="base_gyro"  site="imu"/>
+    <velocimeter    name="base_vel"   site="imu"/>
+    <framepos       name="L_foot_pos" objtype="site" objname="L_foot_site"/>
+    <framepos       name="R_foot_pos" objtype="site" objname="R_foot_site"/>
+  </sensor>
+
+  <keyframe>
+    <!--
+      Standing pose: hip +0.3 / knee -0.6 (the knee's limit is [-2.2, 0], so it
+      only bends negative).
+      Vertically: 0.035 (half the base height) + 0.16*cos(0.3)*2 + 0.028 (foot
+      radius) ~= 0.369. The hip's forward swing 0.16*sin(0.3) and the knee's
+      return 0.16*sin(-0.3) cancel, so the feet land directly under the base.
+    -->
+    <key name="home"
+         qpos="0 0 0.369  1 0 0 0  0.3 -0.6 0.3 -0.6"
+         ctrl="0.3 -0.6 0.3 -0.6"/>
+  </keyframe>
+</mujoco>

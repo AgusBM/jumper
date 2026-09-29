@@ -1,0 +1,59 @@
+![Jumper illustration](docs/media/jumper-hero.png)
+
+# Jumper
+
+Design appearances. Create worlds. Train motions for **Jumper**, a 22-DoF hexapod.
+
+Open this repository in an AI coding assistant and describe what you want in one sentence.
+The linked projects and guides below give your assistant the workflows to follow.
+
+## One sentence to design an appearance
+
+> Design a warm sand ranger appearance for Jumper with coordinated body and limb colors, then export a `.skin`.
+
+| | | |
+|:-:|:-:|:-:|
+| ![Warm sand ranger appearance](docs/media/design-warm-sand.png) | ![Silver armor appearance](docs/media/design-silver-armor.png) | ![Raphael Turtle appearance](docs/media/design-raphael.png) |
+| [**Warm sand ranger**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/skins/warm-sand-ranger-integrated-v2.skin) | [**Silver armor**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/skins/mecha-tripo-v3.skin) | [**Raphael Turtle**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/skins/raphael-turtle-v1.skin) |
+
+[Browse all skins](https://github.com/KingKongRobotics/jumper-design/tree/main/library/skins)
+
+## One sentence to create a scene
+
+> Create a park pump-track scene for Jumper with rolling terrain, trees and benches, then export a `.map`.
+
+| | | |
+|:-:|:-:|:-:|
+| ![Park pump track scene](docs/media/design-park.png) | ![Bedroom scene](docs/media/design-bedroom.png) | ![Soccer scene](docs/media/design-soccer.png) |
+| [**Park pump track**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/park-pump-track.map) | [**Bedroom**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/bedroom.map) | [**Soccer**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/soccer.map) |
+
+[Browse all maps](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
+
+## One sentence to train a motion
+
+> Train a stable tripod gait for Jumper, then replay and evaluate the training result.
+
+| | | |
+|:-:|:-:|:-:|
+| ![Jumper walking](docs/media/walk.gif) | ![Jumper changing posture](docs/media/posture.gif) | ![Jumper jumping](docs/media/jump.gif) |
+| **Walk** | **Posture** | **Jump** |
+| ![Jumper walking with one arm free](docs/media/claw.gif) | ![Jumper dancing](docs/media/dance.gif) | ![Jumper waving](docs/media/gesture.gif) |
+| **Grasp** | **Dance** | **Gesture** |
+
+The images are existing appearance and scene examples; the motion clips show trained policies running in simulation.
+
+## Where to find things
+
+| | |
+|---|---|
+| [jumper-design](https://github.com/KingKongRobotics/jumper-design) | Appearance and scene creation; your assistant reads its [instructions](https://github.com/KingKongRobotics/jumper-design/blob/main/AGENTS.md) and uses its tools as needed. |
+| [Training tutorial](docs/TUTORIAL.md) | Motion training, replay and policy export in this repository. |
+| [Project guide](docs/PROJECT_GUIDE.md) | Setup, current capabilities and further documentation. |
+
+Training builds on [mjlab](https://github.com/mujocolab/mjlab),
+[rsl_rl](https://github.com/leggedrobotics/rsl_rl), [MuJoCo](https://github.com/google-deepmind/mujoco)
+and [MuJoCo Warp](https://github.com/google-deepmind/mujoco_warp).
+Example appearance and scene images come from jumper-design; [image sources](docs/media/DESIGN_SOURCES.md)
+and [third-party notices](NOTICE) record attribution.
+
+[中文](README.zh.md) · [License](LICENSE)

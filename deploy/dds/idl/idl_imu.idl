@@ -1,0 +1,40 @@
+# include "idl_common.idl"
+
+module Imu
+{
+    @extensibility(FINAL)
+    struct ImuOutput
+    {
+        uint64 timestamp_ns;
+        Common::Accelerometer3D acc;
+        Common::Velocity3D vel;
+        Common::Position3D pos;
+        Common::Velocity3D gyro;
+        Common::Quaternion q;
+    };
+
+    // 原极(yuanji) AHRS 单帧原始数据
+    @extensibility(FINAL)@nested
+    struct YuanjiAhrs
+    {
+        uint32 timer; //us，原极 AHRS 内部时间
+        float pitch;
+        float roll;
+        float yaw;
+        float ax;
+        float ay;
+        float az;
+        float gx;
+        float gy;
+        float gz;
+        float temp;
+    };
+
+    @extensibility(FINAL)
+    struct YuanjiOutput
+    {
+        // SOC 侧收到该样本的时刻 (CLOCK_REALTIME, Unix 纪元纳秒)。
+        uint64 timestamp_ns;
+        YuanjiAhrs ahrs;
+    };
+};

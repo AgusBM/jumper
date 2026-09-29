@@ -1,0 +1,85 @@
+[package]
+name = "mjrl-fsm"
+version = "0.1.0"
+edition = "2021"
+description = "Run an exported policy on a Rockchip RK3576 NPU, over the robot's DDS bus"
+license = "Apache-2.0"
+
+[lib]
+# `cdylib` is what `wasm32` needs to produce a module wasm-bindgen can process;
+# `rlib` is what everything else links against, including this crate's own
+# tests. Both, so one manifest serves the browser and the robot.
+crate-type = ["cdylib", "rlib"]
+
+# The robot's host. `required-features` rather than a `#[cfg]` inside the file:
+# a machine without the device feature has no bus and no NPU, and `cargo build`
+# there should build the library rather than fail on a binary it cannot use.
+[[bin]]
+name = "controller"
+path = "src/bin/controller.rs"
+required-features = ["device"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+# Only for the browser host. Optional so the device build and `cargo test` do
+# not pull a JS-facing dependency they have no use for.
+wasm-bindgen = { version = "0.2", optional = true }
+# Only for the `play` host. `abi3-py310` builds one extension that every Python
+# this repository supports (3.10-3.13) can import, so the artifact does not have
+# to be rebuilt per interpreter.
+pyo3 = { version = "0.22", features = ["abi3-py310", "extension-module"], optional = true }
+
+[build-dependencies]
+cc = "1"
+# The IDL structs are nested and change with the robot; generating the Rust
+# mirrors from the headers idlc just emitted is the only way they cannot drift.
+bindgen = "0.70"
+
+[features]
+# `device` is everything that talks to hardware: the DDS bus and, under `rknn`,
+# the NPU. It is on by default so the ordinary build and `cargo test` are
+# unchanged -- but it is a **feature** rather than the only way to build, because
+# the layers above it have three consumers and only one of them is a robot.
+#
+# The other two are why this line exists:
+#
+#   cargo check --target wasm32-unknown-unknown --no-default-features
+#
+# passing is the proof that observation, action, contract and FSM contain no
+# syscall. A browser has no DDS and no NPU; if the core cannot be built without
+# them then it cannot be the core, and the web simulator would have to reimplement
+# it -- which is the second implementation this whole path exists to avoid.
+default = ["device"]
+device = []
+
+# The RKNN runtime is an aarch64 .so; a host build has no NPU to talk to. Off by
+# default so `cargo test` works on a development machine, and turned on by the
+# aarch64 profile in .cargo/config.toml. Without it every mode falls back to the
+# stub engine, exactly as the C++ controller does when built without RKNN.
+rknn = ["device"]
+
+# The browser host: `WebFsm`, the JS-facing wrapper around `Controller`. Off by
+# default, because it only makes sense for `--target wasm32-unknown-unknown`.
+web = ["dep:wasm-bindgen"]
+
+# The `play` host: an importable extension module wrapping the same `Controller`
+# the browser and the robot run. Off by default; `extension-module` links
+# against no libpython, so a build with it on cannot be run as an ordinary
+# binary and `cargo test` would fail to link.
+#
+# `generate-import-lib` is for the Windows build, cross-compiled in
+# `docker-build.sh`: a Windows DLL has to link against `python3.dll` through an
+# import library, which a Linux machine has no Python to take it from, and
+# without this the link fails with `cannot find -lpython3`. It makes one from
+# the stable ABI's symbol list instead. On every other target it does nothing.
+py = ["dep:pyo3", "pyo3/generate-import-lib"]
+
+[profile.release]
+# A missed control deadline is a real-time failure, so the loop is built for
+# latency rather than size: no unwinding tables to walk, one codegen unit so the
+# hot path can inline across modules.
+lto = true
+codegen-units = 1
+panic = "abort"

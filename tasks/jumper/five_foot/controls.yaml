@@ -1,0 +1,249 @@
+# jumper.five_foot operator controls -- how a person's input becomes the two
+# commands the policy observes, and the claw and the arm the task answers
+# itself.
+#
+# Schema 2, with two commands: the velocity one every locomotion task has, and
+# the attitude one (`body_pose`) this task carries for aiming the claw. One
+# person drives both, so `command` is a list.
+#
+# ## Laid out as jumper.posture is, on purpose
+#
+# The two tasks' pose commands reach the robot on one set of channels
+# (`Command::base_pitch`, `base_roll`, `base_twist`), so a control has to mean
+# the same thing in both: the pad below is jumper.posture's, binding for
+# binding, and the keyboard is its too, key for key, except for this task's
+# own controls -- `tests/test_five_foot_pose_command.py` fails when the two part
+# otherwise.
+# What this task does not have is posture's height.
+#
+#     does                          pad                             keyboard
+#     walk forward / back           left stick up / down            W S, or the arrows
+#     walk left / right             left stick left / right         A D, or the arrows
+#     pitch: nose down / up         right stick up / down           I K
+#     twist: ccw / clockwise        right stick l / r, first half   H ;
+#     turn: ccw / clockwise         right stick l / r, second half  J L
+#     roll: left side down / up     R3 held, right stick l / r      U O
+#     close the claw                LT, left / RT, right            Space, either side
+#     hold the arm out, thumb up    d-pad up                        Shift
+#       thumb down                  d-pad down                      Alt
+#       thumb-web up                d-pad left                      Ctrl
+#     let go of everything          B                               Esc
+#     (hands off)                   stand still, level and square
+#
+# The keys are as
+# revised on 2026-09-29: Space closes the claw, and Shift, Alt and Ctrl hold
+# the arm out -- accepting that in a claw mode Ctrl is not the dance chord's.
+#
+# The attitude used to be on the numeric keypad, kk-rl-lab's layout key for key
+# (KP 8 / 2 pitch, KP 4 / 6 roll, KP 7 / 9 twist, KP 5 level, KP 0 hand back). It
+# moved here so that the pad drives it too -- on the robot it was not driven at
+# all, and `base_pose` sat at level and square whatever the operator did.
+#
+# Hand-written: `write_controls.py` produces one command. Every control name
+# below is still checked against `controller/vocabulary.json` on load, so a typo
+# stops `play` rather than binding nothing.
+#
+# Two rules this file inherits from the specification it replaced:
+#   * Every value carries its source. A number without one cannot be told
+#     apart from a guess.
+#   * A consumer fails on a missing or malformed value rather than
+#     substituting a default. A sign that defaults to +1 is a robot that walks
+#     backwards while the screen looks perfectly normal.
+
+schema_version: 2
+
+command:
+  - term: twist
+    # The observation term these numbers are written into.
+    feeds: velocity_commands
+    # The robot's own frame: +X forward, +Y left, +Z up (ROS REP-103).
+    frame: body
+    # Order is the order the command term writes them, and therefore the order
+    # they appear in the observation.
+    axes:
+      - name: lin_vel_x
+        unit: m/s
+        positive: forward
+      - name: lin_vel_y
+        unit: m/s
+        positive: left
+      - name: ang_vel_z
+        unit: rad/s
+        positive: counter-clockwise
+    scaling:
+      # Full deflection is the edge of the range the policy was **trained** on,
+      # not an absolute speed -- so a stick means "as fast as this policy was
+      # ever asked to go" and cannot ask for something off-distribution.
+      rule: full_deflection_is_range_edge
+      formula: axis * (range_max if axis >= 0 else -range_min)
+      # A range like (-0.5, 1.0) gives forward twice what it gives back, which is
+      # what the policy trained on; taking the larger end for both quietly
+      # commands something it never saw.
+      ends_scaled_separately: true
+
+  - term: body_pose
+    # `env_cfg.py` observes this command under the name the controller already
+    # builds, `base_pose`, as three channels in this order.
+    feeds: base_pose
+    frame: pitch and roll against gravity; twist over the footholds
+    # The order `mdp/pose_command.py` writes them -- PITCH, ROLL, TWIST -- which
+    # is `base_pose`'s order and not jumper.posture's (twist first).
+    axes:
+      - name: pitch
+        unit: rad
+        # Nose down, the right-hand rule about the body's +y (left):
+        # `mdp/pose_command.py::base_pitch_roll` is `asin(g_x)`.
+        positive: nose down
+      - name: roll
+        unit: rad
+        # Right side down, which is left side up: the same sense jumper.posture
+        # states from the other side.
+        positive: right side down
+      - name: twist
+        unit: rad
+        positive: counter-clockwise
+    scaling:
+      # Full deflection is the edge of the **standing** bands, the widest the
+      # command goes: 20 degrees of pitch, 15 of roll, 30 of twist. While the
+      # velocity command walks, the command term (in replay) and the controller
+      # (on the robot, from the contract) hold the three to the walking bands, 15
+      # each -- the band the policy was trained to walk under.
+      rule: full_deflection_is_range_edge
+      formula: axis * (range_max if axis >= 0 else -range_min)
+      ends_scaled_separately: true
+
+# The controls this task answers itself, by name: no command reads them, and no
+# policy sees them. Its own code answers each -- in replay `mdp/gripper.py`,
+# which closes the left claw and leaves the arm stowed, and on the robot
+# `deploy/lib.rs`, the whole of it -- and each device binds every one of them,
+# under its own `task:` below.
+task:
+  # Each claw closes as far as its control is held, and let go it opens -- how
+  # the robot's `control-agent` has always handed a gripper to the arm it is on.
+  # No policy drives the claw. A mode carrying the claw on the right answers
+  # `claw_right`; trained with the claw on the left, replay only ever carries it
+  # there, so in `play` only `claw_left` closes anything.
+  claw_left:
+    kind: amount
+    does: closes the left claw as far as it is held
+  claw_right:
+    kind: amount
+    does: closes the right claw as far as it is held
+  # The carried arm, held straight out at one of rl-wbc-fsm's V3.1 `[arm]`
+  # presets for as long as its control is held, and back to its stow the moment
+  # nothing is held -- the doc's momentary switches, asked for on 2026-09-29;
+  # until then a press swung the arm out and the same press stowed it. Two held
+  # together blend, and a preset held outranks the right stick's pitch on the
+  # arm: `deploy/lib.rs` has both.
+  arm_thumb_up:
+    kind: press
+    does: holds the carried arm straight out, thumb up, while held
+  arm_thumb_down:
+    kind: press
+    does: holds the carried arm straight out, thumb down, while held
+  arm_web_up:
+    kind: press
+    does: holds the carried arm straight out, thumb-web up, while held
+
+devices:
+  gamepad:
+    # The stick position *is* the command, on every channel.
+    scheme: absolute
+    layout: xbox
+    axes:
+      # Walking, as every locomotion task has it and with the same two evdev
+      # negations: Ly is positive **down**, Lx positive **right**.
+      lin_vel_x: { source: Ly, sign: -1 }
+      lin_vel_y: { source: Lx, sign: -1 }
+      # The right stick's left-right travel is two things in order: the first
+      # half twists the body over its planted feet, the second half turns.
+      # Past half-travel the turn climbs from zero and the twist unwinds, back
+      # to zero at three quarters, where the turn is at half its top rate: the
+      # body leads into the turn and is square again before the turn is fast.
+      # A turning robot is a walking one, so the moving band holds the twist to
+      # 15 degrees first and the unwinding comes under it at 0.625. The 0.75 is
+      # the turn's half-way point, so it moves if the turn's travel does. Asked
+      # for on 2026-09-28; measured against nothing. Right is clockwise, which
+      # is negative for both.
+      twist:     { source: Rx, sign: -1, travel: [0.0, 0.5, 0.5, 0.75] }
+      ang_vel_z: { source: Rx, sign: -1, travel: [0.5, 1.0] }
+      # Forward tips the nose down, as a flight stick does. Ry is positive
+      # towards the operator, pulling back is nose up, and nose up is negative
+      # pitch: -1.
+      pitch:     { source: Ry, sign: -1 }
+      # With R3 held the same left-right travel rolls instead, and twist and
+      # turn are both zero while it does. Right is right side down: +1. The
+      # up-down travel stays the pitch: this task has no height for it, which is
+      # the one place jumper.posture's held layer and this one part -- and why
+      # this pad has no `reset`, which puts posture's height back.
+      roll:      { source: Rx, sign: 1, shifted: true }
+    # R3 is held, not toggled, as in jumper.posture: the roll is in for as long
+    # as the stick is pressed down and the turn is back the moment it comes up
+    # (asked for on 2026-09-29).
+    shift: { button: R3, gesture: hold }
+    # MEASURED: the stick signs are not measured against the robot's pad
+    # service. `controller/xbox.py` states the same evdev convention -- ABS_Y
+    # positive is **down**, ABS_X positive is **right** -- and the service passes
+    # both through unchanged. Pushing the stick on the robot is what settles it.
+    #
+    # The service applies a 0.15 deadband and **rescales**, so full deflection
+    # still reaches ±1. A consumer that applies its own on top narrows the range
+    # a person can ask for and cannot tell that it has.
+    deadzone: device_reported_rescaled
+    # Hands both commands back to the random sampler in `play --task`; on a
+    # robot, which has no sampler, it lets go of everything.
+    release_button: B
+    # Where the task's controls are on the pad: each claw on the trigger at its
+    # side, squeezed as far as it closes, and the arm's presets on the d-pad, a
+    # direction held for as long as the arm is to be out -- a `press` goes on a
+    # d-pad direction, because the ten buttons are the bundle's mode switches and
+    # the release. Right is not the task's since 2026-09-29, when the diagonals
+    # it made with up went: in a claw mode it does nothing on its own. A
+    # direction pressed with `menu` held is the bundle's, not this
+    # (`deploy/manifests.json`).
+    task:
+      claw_left: LT
+      claw_right: RT
+      arm_thumb_up: dpad_up
+      arm_thumb_down: dpad_down
+      arm_web_up: dpad_left
+
+  keyboard:
+    # Keystrokes bound to what they do: each pushes one direction of one axis,
+    # "+" being the axis's own positive direction as `positive:` above words it,
+    # so the keyboard has no signs of its own -- there is no stick for a sign to
+    # be relative to.
+    scheme: keys
+    # Seconds a key is held for full deflection, or a claw's key for the claw
+    # shut: the axis climbs linearly until then and is back at rest the moment
+    # the key comes up, as a stick let go of. Asked for on 2026-09-26; measured
+    # against nothing.
+    full_after_s: 2.0
+    axes:
+      # jumper.posture's keys, key for key (asked for on 2026-09-28 and
+      # 2026-09-29): W S and the arrows walk, A D and the arrows step sideways,
+      # J L turn, H ; twist, I K tip the nose down and up, U O roll the left
+      # side down and up. Every letter is also a MuJoCo viewer shortcut.
+      lin_vel_x: { "+": [key_w, key_up], "-": [key_s, key_down] }
+      lin_vel_y: { "+": [key_a, key_left], "-": [key_d, key_right] }
+      ang_vel_z: { "+": [key_j], "-": [key_l] }
+      pitch:     { "+": [key_i], "-": [key_k] }
+      roll:      { "+": [key_o], "-": [key_u] }
+      # The twist on keys of its own since Control-agent 3.1's revision of
+      # 2026-09-29; until then it was Shift + J / L, and Shift holds the arm out
+      # here, so the twist was the pad's alone in this task.
+      twist:     { "+": [key_h], "-": [key_semicolon] }
+    # Lets go of everything, as the pad's B does. Esc since the doc put the
+    # right claw's switch on B (2026-09-29).
+    release: [key_escape]
+    task:
+      # Space closes whichever claw the mode carries: a mode reads only its own
+      # side's, so the two share the key. MuJoCo's viewer binds Space as well
+      # (the dictionary's `_keys_note`).
+      claw_left: [key_space]
+      claw_right: [key_space]
+      # The d-pad's up, down and left: Shift, Alt and Ctrl, either key of each.
+      # In a claw mode Ctrl is not the modifier of the bundle's dance chords.
+      arm_thumb_up: [shift]
+      arm_thumb_down: [alt]
+      arm_web_up: [ctrl]

@@ -1,0 +1,45 @@
+{
+  "_source": "mbus idl/topics.json @ master d9875988f065 (2026-09-28) -- only the channels this FSM uses",
+  "channels": [
+    {
+      "key": "robot_control_command",
+      "topic": "robot_control",
+      "qos": "RobotControl_Control",
+      "type": "RobotControl::Control",
+      "status": "live",
+      "note": "control-agent-cpp -> motion-planner"
+    },
+    {
+      "key": "motor_control_command",
+      "topic": "mc/motor_control",
+      "qos": "MotorControl_Control",
+      "type": "MotorControl::Control",
+      "status": "live",
+      "note": "motion-planner / mc_forwarder -> mc_ctrl_driver"
+    },
+    {
+      "key": "motor_state",
+      "topic": "mc/motor_state",
+      "qos": "MotorControl_State",
+      "type": "MotorControl::State",
+      "status": "live",
+      "note": "mc_ctrl_driver / mc_forwarder -> motion-planner"
+    },
+    {
+      "key": "imu_output",
+      "topic": "imu/output",
+      "qos": "Imu_ImuOutput",
+      "type": "Imu::ImuOutput",
+      "status": "planned",
+      "note": "IMU stream; QoS defined, no live peer"
+    },
+    {
+      "key": "robot_control_raw",
+      "topic": "RobotControlRaw_ControlRaw",
+      "qos": "RobotControlRaw_ControlRaw",
+      "type": "RobotControlRaw::ControlRaw",
+      "status": "planned",
+      "note": "control-pod-svc -> subscribers"
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+# include "idl_common.idl"
+
+module MotorControl
+{
+    const uint32 MC_MAX_MOTOR_CNT = 24;
+
+    // 扩展寄存器读回（extra-register readback）：让选中的少数电机在 MIT 控制的
+    // 同时额外读回指定寄存器，经 SPI/DDS 回传。最多 MC_MAX_EXTRA_MOTOR 个电机，
+    // 每个最多 MC_MAX_EXTRA_REG 个寄存器。
+    const uint32 MC_MAX_EXTRA_MOTOR = 5;
+    const uint32 MC_MAX_EXTRA_REG = 2;
+
+    @extensibility(FINAL)@nested
+    struct MotorCmd
+    {
+        float pos;
+        float kp;
+        float dq;
+        float kd;
+        float tau;
+    };
+
+    @extensibility(FINAL)@nested
+    struct MotorState
+    {
+        octet isvalid;
+        float pos;
+        float dq;
+        float tau;
+        octet status;
+        float fpc_temper;
+        float pcb_temper;
+    };
+
+    @extensibility(FINAL)@nested
+    struct ImuData
+    {
+        octet imu_data_valid;  //imu原始数据就绪标志， 0为未就绪， 1为就绪（下同）
+        octet mag_data_valid;  //mag原始数据就绪标志
+        uint32 imu_timestamp;  //imu原始数据时间戳(us)
+ 	    uint32 mag_timestamp;  //mag原始数据时间戳(us)
+        Common::Accelerometer3D acc; //加速度原始数据
+        Common::Velocity3D gyro;    //陀螺仪原始数据
+        Common::Magnetometer3D mag; //地磁原始数据
+        float imu_temperature;     //imu温度， 单位：摄氏度
+        Common::Quaternion q;      //四元数
+        uint32 quat_timestamp;    //四元数时间戳（us）
+        octet quat_valid;        //四元数就绪标志
+        octet imu_err_code;      //imu错误码， 0，无错误    1，imu初始化中   2，imu状态异常  3，imu未启动
+        octet raw_count;         
+            // raw_count说明
+            // imu初始化计数， 用于给上层看，当imu异常重启时， 四元数状态会重置，因此需要上层知道imu重启了。  
+            // 验证方法，raw_count与上一次获取的值不一致即为imu重启。
+            // 数值范围： 0~7 初始化后正常为1，触发复位+1，最大为7，超过7后归0
+    };
+
+
+    @extensibility(FINAL)
+    struct Control
+    {
+        uint64 timestamp_ns;
+        uint16 sequence_id;
+        uint32 motor_count;
+        MotorCmd motors[MC_MAX_MOTOR_CNT];
+    };
+
+    // 单个电机的扩展寄存器读回条目。addrs/values 一一对应，未用的槽位以 0 填充。
+    @extensibility(FINAL)@nested
+    struct MotorExtra
+    {
+        octet motor_index;                 // HCI 电机序号 (0-based)；0xFF = 无效条目
+        octet n_extra;                     // 该电机实际读回的寄存器个数 0..MC_MAX_EXTRA_REG
+        octet addrs[MC_MAX_EXTRA_REG];      // 读回的寄存器地址（回显，便于消费者解释）
+        float values[MC_MAX_EXTRA_REG];     // 对应寄存器的 f32 值
+    };
+
+    @extensibility(FINAL)
+    struct State
+    {
+        uint16 sequence_id;
+        uint32 motor_count;
+        MotorState motors[MC_MAX_MOTOR_CNT];
+        ImuData imu;
+        uint64 source_timestamp_ns;
+        octet extra_count;                       // 有效 MotorExtra 条目数 0..MC_MAX_EXTRA_MOTOR
+        MotorExtra extra[MC_MAX_EXTRA_MOTOR];     // 扩展寄存器读回（未用条目 motor_index=0xFF）
+    };
+};

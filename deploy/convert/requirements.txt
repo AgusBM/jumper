@@ -1,0 +1,56 @@
+# The conversion environment. Install into deploy/convert/.venv only -- never into the
+# repository's .venv. `setup.sh` does that; this file records why each pin is here.
+#
+# Linux x86_64 (or aarch64) only: rknn-toolkit2 publishes no macOS or Windows wheel.
+
+# Rockchip's converter, newest release on PyPI at the time of writing and the one
+# every measurement in README.md was taken with. Pinned rather than floating
+# because the version is coupled to the board: a .rknn built here does not load
+# under a librknnrt.so older than the toolkit that produced it.
+rknn-toolkit2==2.3.2
+
+# ── Pins rknn-toolkit2 declares wrongly or not at all ──────────────────
+#
+# onnx: the wheel asks for `onnx>=1.16.1`, which resolves to 1.22 and then dies
+# inside `load_onnx` with `AttributeError: module 'onnx' has no attribute
+# 'mapping'` -- `onnx.mapping` was removed after 1.16. Measured, not guessed.
+onnx==1.16.1
+
+# torch: imported at `import rknn.api` time even though nothing here converts a
+# torch model, so it cannot be left out. Taken from PyTorch's CPU index because
+# the PyPI wheel drags in ~2.5 GB of CUDA libraries this never calls.
+#
+# Two lines, because the CPU index names the two architectures differently:
+# x86_64 gets `torch-2.4.0+cpu-...x86_64.whl`, aarch64 gets plain
+# `torch-2.4.0-...aarch64.whl` with no local version. Pinning `2.4.0+cpu`
+# everywhere resolves to nothing on aarch64 -- "no matching distribution", after
+# the host check has already said the machine is supported. (The aarch64 build
+# has no CUDA variant to be confused with, so the bare version is already the
+# CPU one.)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.0+cpu ; platform_machine == "x86_64"
+torch==2.4.0 ; platform_machine == "aarch64"
+
+# setuptools: rknn-toolkit2 imports `pkg_resources`, which setuptools removed in
+# 81. Undeclared, so a fresh install resolves to the newest setuptools and then
+# fails at `RKNN()` with `ModuleNotFoundError: No module named 'pkg_resources'`.
+# Measured on a clean venv here: 84.0.0 fails, 80.10.2 works.
+setuptools<81
+
+# The rest are rknn-toolkit2's own declared dependencies, listed so that a
+# resolver failure names a version rather than "no matching distribution".
+numpy==1.26.4
+protobuf>=4.21.6,<=4.25.4
+psutil>=5.9.0
+ruamel.yaml>=0.17.21
+scipy>=1.9.3
+tqdm>=4.64.1
+fast-histogram>=0.11
+# opencv-python needs libGL at import. On a container without it, either
+# `apt install libgl1` or swap this line for opencv-python-headless -- but note
+# that pip will then install opencv-python anyway to satisfy rknn-toolkit2's own
+# metadata, leaving two packages providing `cv2`.
+opencv-python>=4.5.5.64
+
+# Used by onnx2rknn.py as the reference the converted model is checked against.
+onnxruntime>=1.17.0

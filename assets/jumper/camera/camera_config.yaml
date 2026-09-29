@@ -1,0 +1,183 @@
+# Jumper_5D virtual camera rig — provisional install on base_link.
+# Future hardware: update camera_rig.position_m / orientation, and tof_to_rgb extrinsics.
+#
+# TOF optical / ranging numbers below follow ST VL53L9CX datasheet DS14879 Rev 6
+# (Chinese translated PDF: 「硬件设计注意事项」— Ch.2 Overview + §8 ranging performance).
+# RGB block is the separate color camera (unchanged); only TOF fields were datasheet-aligned.
+
+camera_rig:
+  # **The model places the camera, not this file.** V1.6 carries the housing as a
+  # real link, `camera_link`, so `jumper.xml` mounts the camera on it and the
+  # position comes from the CAD. The pose below is the pre-V1.6 guess, kept because
+  # it is what the ToF extrinsics and the noise model were written against, and
+  # because the gap between the two is worth seeing: it was 20 mm short, 14 mm off
+  # the centreline, and 21 mm too high.
+  parent_link: camera_link
+  pose_status: superseded_by_model
+  # Where the housing actually is, measured on the compiled V1.6 model, in
+  # base_link (+X fwd, +Y left, +Z up). Recorded, not read -- the XML gets this
+  # from the URDF.
+  measured_position_m:
+    x: 0.084747
+    y: 0.01418
+    z: 0.016848
+  # The eye sits `sim_eye_offset_m` in front of the housing's origin, because the
+  # housing is a closed mesh and its origin is on its own front face -- a camera
+  # there renders the inside of it (221 of 221 rays blocked at zero distance).
+  #
+  # The value is the offset that puts the eye **level with the forward-most
+  # geometry the robot carries**, so nothing is in front of it at all. That is a
+  # property of the shell, so it has to be re-measured on a new one. In base_link
+  # coordinates, the bottom-shell revision: base_link 93.816 mm is forward-most,
+  # the k=64 hull of it 93.734, ToF 93.148, the camera housing 91.708, and the
+  # mount origin 87.508 -- so level is 6.308 mm and this rounds up to 7.0. The
+  # previous shell needed 5.0 for the same rule.
+  #
+  # **This file is the only copy.** `build_jumper.py` reads it and
+  # `tests/test_camera.py` compares the built model against it; a second copy in
+  # the generator is how 0.005 and 0.007 briefly disagreed. See `build_jumper.py`
+  # for the ray cast that showed the hull, not the mesh, swallowing the eye.
+  sim_eye_offset_m: 0.007
+  # Superseded. In base_link frame, pre-V1.6, marked provisional when written.
+  position_m:
+    x: 0.065
+    y: 0.0
+    z: 0.038
+  orientation:
+    use_existing_verified_orientation: true
+    # MuJoCo camera: view = local -Z, image up = local +Y.
+    # This quat maps: view → body +X (forward), image up → body +Z (sky),
+    # image right → body -Y (robot right).
+    quat_wxyz: [0.5, 0.5, -0.5, -0.5]
+
+rgb:
+  # Module drawing J567A-30P (OV16880-FF 广角), 主要参数 table. The three numbers
+  # below the resolution are the datasheet's; everything after them is derived.
+  sensor: OV16880
+  optical_format: 1/3.06
+  efl_mm: 1.906
+  f_number: 2.2
+  lens_construction: 5P
+  ttl_mm: 5.2
+
+  width: 1920
+  height: 1440
+
+  # **FOV.D — diagonal.** The drawing says 视场角(FOV.D) 123°, and `hfov_deg: 123`
+  # here was a misreading of it: the D is the diagonal. Two consequences, both of
+  # which were live until the drawing turned up.
+  #
+  # The old pair (hfov 123, vfov 91.2) is not a pinhole at this resolution at all.
+  # A square-pixel pinhole needs fx = fy; those two imply fx = 521 against
+  # fy = 705, 35% apart. The height/width they do imply is 0.5544, i.e. 16:9 —
+  # so the 91.2 was derived from the mislabelled 123 on a frame shape this sensor
+  # does not have.
+  dfov_deg: 123.0
+
+  # Derived from `dfov_deg` and the resolution above, square pixels, no distortion:
+  #   f = (diagonal_px / 2) / tan(dfov / 2) = 1200 / tan(61.5°) = 651.5 px
+  # Recompute these if the resolution changes; they are not independent numbers.
+  hfov_deg: 111.7
+  vfov_deg: 95.7
+
+  intrinsics:
+    # **Derived, not calibrated.** A pinhole fitted to the corners, which is the
+    # best that a diagonal FOV and a resolution can give. The lens is not a pinhole
+    # (see `distortion_pct`), so this over-states the focal length at the centre:
+    # a -8.7% barrel lens reaches its corners with less focal length than the
+    # straight-line fit implies. Replace all four with a checkerboard calibration
+    # on real jumper hardware; `cx`/`cy` in particular are assumed central here and
+    # on a real module they are not.
+    calibrated: false
+    fx_px: 651.5
+    fy_px: 651.5
+    cx_px: 960.0
+    cy_px: 720.0
+
+  # Drawing: 畸变(Distortion) < -8.7%, barrel. Was `distortion_model: none`, which
+  # read as "measured to have none" and meant "not filled in" -- a 123° lens cannot
+  # be distortion-free. No coefficients: the drawing gives a bound, not a model, and
+  # a model needs a calibration.
+  distortion_model: barrel
+  distortion_pct: -8.7
+  distortion_coefficients: null
+
+  # The cross-check that says the three datasheet numbers agree with each other.
+  # A 1/3.06" sensor is about 5.23 mm across the diagonal by the 16 mm convention,
+  # and 5.23 mm at EFL 1.906 mm is a **pinhole** diagonal FOV of 107.9°. The lens
+  # delivers 123° onto that same sensor, and the difference is what the barrel
+  # distortion buys. Fitting a pinhole to 123° therefore describes the corners
+  # correctly and the centre too wide, which is the error `intrinsics` inherits.
+  pinhole_dfov_deg: 107.9
+
+  # Which of the two pinholes the simulator renders, because a renderer with no
+  # distortion has to pick one and they are 17 degrees apart vertically:
+  #
+  #   corner-matched   f = 651.5 px   fovy 95.7   sees the lens's real 123° diagonal
+  #   optics-exact     f = 873.5 px   fovy 79.0   EFL + sensor size, no distortion
+  #
+  # `jumper.xml` mounts the first. The second is what MuJoCo computes if a camera is
+  # given `sensorsize` and `focal`, which is why the generator sets neither and lets
+  # `fovy` carry the intrinsics -- at this resolution the two are the same camera.
+  # A robot that sees 79° where the hardware sees 123° is the more misleading of
+  # the two errors: it is missing a third of the world rather than straightening
+  # the edges of it.
+  sim_pinhole: corner_matched
+
+tof:
+  # VL53L9CX — DS14879 §2.1 / §2.2 / §3.2
+  #
+  # **The model carries this sensor, not a task.** `build_jumper.py` mounts it as
+  # the camera `tof` on `tof_sensor_link`, reading the zone array, both fields of
+  # view and the eye offset below; `tasks/jumper/common/tof.py` turns that camera
+  # into a ray-cast sensor any task can declare. So the numbers here reach the
+  # simulation through the model, and this block is their only copy.
+  parent_link: tof_sensor_link
+  # Same rule as `camera_rig.sim_eye_offset_m`: the offset that puts the eye level
+  # with the forward-most geometry the robot carries. `tof_sensor_link` is
+  # unrotated relative to `base_link`; in its coordinates, v1.6.1:
+  #
+  #   base_link_visual            93.816 mm   <- forward-most
+  #   upper_shell_link_visual     93.814
+  #   base_link_meshcol           93.734      <- the k=64 hull
+  #   tof_sensor_link             93.148      <- the ToF housing itself
+  #   tof_sensor_link origin      90.678
+  #
+  # so level is 3.138 mm and this rounds to 4.0. Measured with the 2268 zone rays:
+  # at 0 and 1 mm every one of them is blocked -- by the housing, and with the
+  # housing excluded by `base_link_meshcol`, whose hull bridges the sensor's
+  # window -- and from 3 mm none is.
+  sim_eye_offset_m: 0.004
+  # Zone array (2× binning): 54 (H) × 42 (V)
+  width: 54
+  height: 42
+  # Optical FoV (Table 3): 55° H × 42° V (diagonal ~71°, also stated in Features)
+  hfov_deg: 55.0
+  vfov_deg: 42.0
+  # Datasheet companion angles (not used by MuJoCo fovy, kept for hardware integration):
+  #   collector exclusion: 62° H × 48° V  (§2.2, cover-glass aperture ≥ exclusion)
+  #   FoI (illumination):  57.6° H × 43° V (§2.3)
+  #   illuminator exclusion: 64° H × 51° V (§2.3)
+  #   emitter wavelength: 940 nm VCSEL ×2 (§2.1)
+  angular_sampling: zone_center
+  # Internal dense depth resolution for zone ray sampling (aspect = 54/42).
+  dense_supersample: 20
+  # Operating profile assumed in sim (see tof_noise_config.yaml):
+  #   Precision mode, 54×42, 50 fps  — min range 50 mm, max ~8.8 m (Table 22/23)
+  ranging_mode: precision
+  resolution_profile: 54x42
+
+tof_to_rgb:
+  # P_rgb = R @ P_tof + t  (points in respective camera optical frames)
+  # Identity until measured co-axial / baseline offset on the real jumper head.
+  translation_m: [0.0, 0.0, 0.0]
+  rotation_matrix:
+    - [1.0, 0.0, 0.0]
+    - [0.0, 1.0, 0.0]
+    - [0.0, 0.0, 1.0]
+
+depth:
+  # Precision mode full-frame min (Table 22) / Precision 54×42 indoor max (Table 23)
+  # Ambient mode would use min_m: 0.45 instead (Table 22).
+  min_m: 0.05
+  max_m: 8.8

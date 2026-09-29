@@ -1,0 +1,732 @@
+{
+  "schema": "kk-policy-bundle/1",
+  "runtimes": {
+    "web": {
+      "model": "onnx",
+      "glue": "runtime/web/controller.js",
+      "wasm": "runtime/web/controller.wasm",
+      "tool": "scripts/deploy.py",
+      "cargo": "build --release --target wasm32-unknown-unknown --no-default-features --features web",
+      "wasmBindgen": "wasm-bindgen 0.2.128",
+      "commit": "ce71f79b191766f0208dca34516564a37816c729",
+      "unverifiedByTheConsumer": "A consumer's own controller is held against its own implementation by a parity test. This one is not held against anything: it arrived with the upload. A consumer that runs it should say so where the person can see it."
+    },
+    "mjlab": {
+      "model": "onnx",
+      "extensions": {
+        "linux-x86_64": {
+          "file": "runtime/mjlab/linux-x86_64/controller.so",
+          "abi": "abi3-py310"
+        },
+        "win-amd64": {
+          "file": "runtime/mjlab/win-amd64/controller.pyd",
+          "abi": "abi3-py310"
+        },
+        "macosx-universal2": {
+          "file": "runtime/mjlab/macosx-universal2/controller.so",
+          "abi": "abi3-py310"
+        }
+      },
+      "commit": "ce71f79b191766f0208dca34516564a37816c729",
+      "note": "The same source as the wasm, built for a host that imports it. Platform-specific: `abi3` frees it from the Python version, not from the machine, so it is keyed by platform: the build machine's, and win-amd64 and macosx-universal2, cross-built. macOS is keyed without a version and the one file carries arm64 and x86_64."
+    },
+    "board": {
+      "model": "rknn",
+      "file": "runtime/board/controller",
+      "platform": "aarch64-unknown-linux-gnu",
+      "commit": "ce71f79b191766f0208dca34516564a37816c729",
+      "note": "The robot's whole program: this crate, cross-compiled. From the bundle's directory: `./runtime/board/controller --bundle . --machine <toml>`."
+    }
+  },
+  "fsm": "controller.toml",
+  "modes": {
+    "claw_left": {
+      "models": {
+        "onnx": "models/claw_left.onnx",
+        "rknn": "models/claw_left.rknn"
+      },
+      "contract": "claw_left.json",
+      "observation": 407,
+      "action": 16
+    },
+    "claw_right": {
+      "models": {
+        "onnx": "models/claw_left.onnx",
+        "rknn": "models/claw_left.rknn"
+      },
+      "contract": "claw_right.json",
+      "observation": 407,
+      "action": 16
+    },
+    "dance_brazilian": {
+      "models": {
+        "onnx": "models/dance_brazilian.onnx",
+        "rknn": "models/dance_brazilian.rknn"
+      },
+      "contract": "dance_brazilian.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "brazilian.motion.trajectory.json"
+    },
+    "dance_crab": {
+      "models": {
+        "onnx": "models/dance_crab.onnx",
+        "rknn": "models/dance_crab.rknn"
+      },
+      "contract": "dance_crab.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "demo.motion.trajectory.json"
+    },
+    "dance_dream_wings": {
+      "models": {
+        "onnx": "models/dance_dream_wings.onnx",
+        "rknn": "models/dance_dream_wings.rknn"
+      },
+      "contract": "dance_dream_wings.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "dream_wings.motion.trajectory.json"
+    },
+    "dance_maze": {
+      "models": {
+        "onnx": "models/dance_maze.onnx",
+        "rknn": "models/dance_maze.rknn"
+      },
+      "contract": "dance_maze.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "maze.motion.trajectory.json"
+    },
+    "gesture_bow": {
+      "models": {
+        "onnx": "models/gesture_bow.onnx",
+        "rknn": "models/gesture_bow.rknn"
+      },
+      "contract": "gesture_bow.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "bow.motion.trajectory.json"
+    },
+    "gesture_hello": {
+      "models": {
+        "onnx": "models/gesture_hello.onnx",
+        "rknn": "models/gesture_hello.rknn"
+      },
+      "contract": "gesture_hello.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "hello.motion.trajectory.json"
+    },
+    "gesture_paw": {
+      "models": {
+        "onnx": "models/gesture_paw.onnx",
+        "rknn": "models/gesture_paw.rknn"
+      },
+      "contract": "gesture_paw.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "paw.motion.trajectory.json"
+    },
+    "gesture_salute": {
+      "models": {
+        "onnx": "models/gesture_salute.onnx",
+        "rknn": "models/gesture_salute.rknn"
+      },
+      "contract": "gesture_salute.json",
+      "observation": 209,
+      "action": 22,
+      "trajectory": "salute.motion.trajectory.json"
+    },
+    "jump": {
+      "models": {
+        "onnx": "models/jump.onnx",
+        "rknn": "models/jump.rknn"
+      },
+      "contract": "jump.json",
+      "observation": 167,
+      "action": 20,
+      "trajectory": "high_jump_flat.trajectory.json"
+    },
+    "locomotion": {
+      "models": {
+        "onnx": "models/locomotion.onnx",
+        "rknn": "models/locomotion.rknn"
+      },
+      "contract": "locomotion.json",
+      "observation": 415,
+      "action": 20
+    }
+  },
+  "notes": [
+    "dance_brazilian: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "dance_crab: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "dance_dream_wings: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "dance_maze: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "gesture_bow: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "gesture_hello: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "gesture_paw: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "gesture_salute: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "jump: its contract has no `controller` block, so a consumer falls back to its own key bindings. Re-export to carry the task's controls.yaml.",
+    "reference: 24 frames, 18 of them inferences (6 in warm start or ramp)"
+  ],
+  "files": {
+    "README.md": {
+      "bytes": 23959,
+      "sha256": "a2998c343cea54811e209711093985a98ded9509b1fa46b544375733fdcde323"
+    },
+    "bow.motion.trajectory.json": {
+      "bytes": 143332,
+      "sha256": "5fc7933935519eebc491ce3265d898fbd702c217f4ed9252d0472feef086fdc0"
+    },
+    "brazilian.motion.trajectory.json": {
+      "bytes": 1184406,
+      "sha256": "dd87589419a2928232cecb6f4378f3280285ace18886cea8079e91d448dedef9"
+    },
+    "claw_left.json": {
+      "bytes": 13627,
+      "sha256": "c51e495e1511c2ec0ce6f016b42aaaf65b532434e79fb24bc78b0f036e06ceb8"
+    },
+    "claw_right.json": {
+      "bytes": 13627,
+      "sha256": "c51e495e1511c2ec0ce6f016b42aaaf65b532434e79fb24bc78b0f036e06ceb8"
+    },
+    "controller.toml": {
+      "bytes": 13780,
+      "sha256": "fb8c7e7734f19e918d9fe67cc36b170ffe6ba9cc7c97d93693f874781ac1ce16"
+    },
+    "dance_brazilian.json": {
+      "bytes": 7107,
+      "sha256": "5458685d56d7feb2bfe9f245e6be37c836771805736250f4aab213133163c97c"
+    },
+    "dance_crab.json": {
+      "bytes": 7084,
+      "sha256": "de7df810b8bc11e42f215c086c4a031cb0a659a2882f8998d70933fcbf8c3eb6"
+    },
+    "dance_dream_wings.json": {
+      "bytes": 7112,
+      "sha256": "ed4a5ae9d0def106dc7d8d061946e37ddcbcccd9d048e59b15a6ceba7dc6b18b"
+    },
+    "dance_maze.json": {
+      "bytes": 7090,
+      "sha256": "d1bd05037b5c0dff4c78732bce49cbd3331e82d612ab987bb85aeacaefad007f"
+    },
+    "demo.motion.trajectory.json": {
+      "bytes": 4806304,
+      "sha256": "130ef0c903699527f0e5f294d09097d30ea973c602fa402dcb8f6fa54639b466"
+    },
+    "dream_wings.motion.trajectory.json": {
+      "bytes": 1067250,
+      "sha256": "eeaa5d4bc6b6f05dad22a53eb20af6b8b8e894cd8486d71e11bd3d014c281b3c"
+    },
+    "gesture_bow.json": {
+      "bytes": 7089,
+      "sha256": "b3b9d82ad20512d8bdcb95c2f4a066ba8c7756aaef03a200fe4e9d743e56c618"
+    },
+    "gesture_hello.json": {
+      "bytes": 7095,
+      "sha256": "9aaf7f5f47eba2e0a92f7ed902287f65d9d5bad84ac75165d1380fe8b173bef9"
+    },
+    "gesture_paw.json": {
+      "bytes": 7089,
+      "sha256": "ab52e1a7e694c151aa8d0e56cbaa31fd90de436633f85a3a8e3015c88313d849"
+    },
+    "gesture_salute.json": {
+      "bytes": 7098,
+      "sha256": "d07380eae647de5ab41418ed4400a8562dd6286b52ed771770f1a777a0347012"
+    },
+    "hello.motion.trajectory.json": {
+      "bytes": 118828,
+      "sha256": "dcea71db6ccdad875f5d7c778555a5203fd49e510cb6bcaccfcfc46ee848d971"
+    },
+    "high_jump_flat.trajectory.json": {
+      "bytes": 120179,
+      "sha256": "c05e862dc91028798270137413fcc1bb252d707347fb34a6830873ad7c7c341d"
+    },
+    "jump.json": {
+      "bytes": 6696,
+      "sha256": "0e257faaac9a30f269d8944db1bae494e816724b86f0a82dd0f746e5f4e63811"
+    },
+    "locomotion.json": {
+      "bytes": 14584,
+      "sha256": "6204effa319eba88e16b3d23bc1a8d005c59c3e0d074cac80f2ba233aab0e5d2"
+    },
+    "manual.en.json": {
+      "bytes": 30940,
+      "sha256": "a8638168b4cd4666be8d05b59d5818b956d6f9fca719dc5911e9aec23bd941c6"
+    },
+    "manual.zh.json": {
+      "bytes": 30477,
+      "sha256": "5a5bcf61e5c82ec53024814d613e7c82cba89588134a5e03fe97c8cae8c4d121"
+    },
+    "maze.motion.trajectory.json": {
+      "bytes": 165743,
+      "sha256": "61322a41f5556dd5e6b18351ece09bf3c8b3bbe982997f9845c08406065bd470"
+    },
+    "models/claw_left.onnx": {
+      "bytes": 1534640,
+      "sha256": "69e4b98a6e25b5f86d17d4ffdf9996df806b901217cecba96e43993ce61020b0"
+    },
+    "models/claw_left.rknn": {
+      "bytes": 931368,
+      "sha256": "1f03c2007423280cc091c0537b589b7a73d0e57de7018554a1a9df1c3b041e02"
+    },
+    "models/dance_brazilian.onnx": {
+      "bytes": 1129112,
+      "sha256": "a8d0c471560cf3aabffab38e5750b20c99d569717d2b46df08e91bbc16553398"
+    },
+    "models/dance_brazilian.rknn": {
+      "bytes": 731304,
+      "sha256": "d50d4b04907a5582dc405d7175711fae10a05985249b340bbc1768cc380582a1"
+    },
+    "models/dance_crab.onnx": {
+      "bytes": 1129112,
+      "sha256": "2723a684d471cd377e781aff5d777a4e65ea48317bc39951ac2e5bf5fb56b011"
+    },
+    "models/dance_crab.rknn": {
+      "bytes": 731304,
+      "sha256": "3357191984c516f14d7ba11854bbcceed4744590b44815aeb590f1082f0ea8d3"
+    },
+    "models/dance_dream_wings.onnx": {
+      "bytes": 1129112,
+      "sha256": "11fdca3c4ae57aa8638608f3b70dd3a51d4d6435d68602b8a298562befb03690"
+    },
+    "models/dance_dream_wings.rknn": {
+      "bytes": 731304,
+      "sha256": "68d54080e87183efa28404a54f8d6545a041bb515b9c86595fa3b27555810642"
+    },
+    "models/dance_maze.onnx": {
+      "bytes": 1129112,
+      "sha256": "c5cd38038ee7ccf408cd9a76e55f624d393666fb743db35609e6ea114aaeae4a"
+    },
+    "models/dance_maze.rknn": {
+      "bytes": 731304,
+      "sha256": "e7ac95270d5094fa7bf40e51d59c45c723c3b8cd216bd708d21249129ff27163"
+    },
+    "models/gesture_bow.onnx": {
+      "bytes": 1129112,
+      "sha256": "14e5168ff39179f8539b600721375bcc2d3c049d60a38060044144ef871b55dd"
+    },
+    "models/gesture_bow.rknn": {
+      "bytes": 731304,
+      "sha256": "c8a90db8376b43a3e055db2026fd96ae1990709ca3f4fa61138ddfdf57b98fa9"
+    },
+    "models/gesture_hello.onnx": {
+      "bytes": 1129112,
+      "sha256": "64d17cd88f86063692a2276dbbf977c399f2ea018558b7b4d34b8f0bb1cecda8"
+    },
+    "models/gesture_hello.rknn": {
+      "bytes": 731304,
+      "sha256": "5e50b34e109466298532b13664aeccf9e46d85af3e95b8b7c64dbf1bfe132f1a"
+    },
+    "models/gesture_paw.onnx": {
+      "bytes": 1129112,
+      "sha256": "bde0871a418ac2735fd320390be50a2a97b1cb4df5929ef46176d0763b1dae21"
+    },
+    "models/gesture_paw.rknn": {
+      "bytes": 731304,
+      "sha256": "500386dc433d83ea88c03a348f5fd0db2ba3161fc5e8dba9aa50765c88d3a498"
+    },
+    "models/gesture_salute.onnx": {
+      "bytes": 1129112,
+      "sha256": "20fac8e4ee9d51fb8daa7d44e90fbed6c4e88aff907a13e7bfbae51fa7423f16"
+    },
+    "models/gesture_salute.rknn": {
+      "bytes": 731304,
+      "sha256": "2acf0fe6e0bd72efed65045252b8d143542b08c8e53a438eae7018f78e22b7f8"
+    },
+    "models/jump.onnx": {
+      "bytes": 1014038,
+      "sha256": "1822601bd4c3696633d1bd7faf59c21988906ad75cc2c41f595375611313d79d"
+    },
+    "models/jump.rknn": {
+      "bytes": 633704,
+      "sha256": "ac8d75611b4f783c6f7e2828301600e3b4e5f0558ba79f8c97097ef751a24f32"
+    },
+    "models/locomotion.onnx": {
+      "bytes": 1552128,
+      "sha256": "a6e0864c425d0604dfa6f11a82ac9e17d5396858dbed3b7dfe70188dba1b02ef"
+    },
+    "models/locomotion.rknn": {
+      "bytes": 932136,
+      "sha256": "8043aacbbec7fbf97f17d3ed447e91eb2e32027de5600cb728b76378f90e662c"
+    },
+    "paw.motion.trajectory.json": {
+      "bytes": 102094,
+      "sha256": "4e4ac350a6b6ff33749c385d3a963552e1565ef8ecfd3ad0405c3aacfca66295"
+    },
+    "reference.json": {
+      "bytes": 183530,
+      "sha256": "3715ef8bd98e702954fda2492d93091a7600fb1ecae6d45ddf5ab8044597fd36"
+    },
+    "runtime/board/controller": {
+      "bytes": 1634288,
+      "sha256": "0bda9776013435bec54739c144303fd03c8f301e216e44b88bfd99c5807d0a39"
+    },
+    "runtime/mjlab/linux-x86_64/controller.so": {
+      "bytes": 2099984,
+      "sha256": "df4b4a73be054955f25d005a32e0abb807baf734c7699ce55a6b429675781e28"
+    },
+    "runtime/mjlab/macosx-universal2/controller.so": {
+      "bytes": 6467280,
+      "sha256": "e079122ae93e48c19606c4155aba6f3adae25eaa9ab85e69fb4bb2feb16e62f7"
+    },
+    "runtime/mjlab/win-amd64/controller.pyd": {
+      "bytes": 3297549,
+      "sha256": "a1103975f1f710ed467694e2333cfc9c7ab00b51317922fa284d4c315b5e2906"
+    },
+    "runtime/web/controller.js": {
+      "bytes": 29783,
+      "sha256": "dde2baa0c7ed5fa5de30e6d53128721959853929c29fa131f64de8100380e59e"
+    },
+    "runtime/web/controller.wasm": {
+      "bytes": 1357577,
+      "sha256": "5ca0cf7a917cecbe95f5e2ff0b4392ae7564c3c758958a7742c06c5214d73982"
+    },
+    "salute.motion.trajectory.json": {
+      "bytes": 98320,
+      "sha256": "f880c52b9a8250ab84031cf12305631ace17afe0b3ae40d07adb4f684e386985"
+    }
+  },
+  "reference": "reference.json",
+  "manuals": {
+    "en": "manual.en.json",
+    "zh": "manual.zh.json"
+  },
+  "built_from": {
+    "locomotion": {
+      "task": "jumper.posture",
+      "from": "logs/jumper/jumper.posture/2026-09-29_11-14-01/model_74800.pt",
+      "export": "tasks/jumper/posture/out/example"
+    },
+    "jump": {
+      "task": "jumper.jump",
+      "from": "tasks/jumper/jump/out/2026-09-26_17-50-11/model_3100.pt",
+      "export": "tasks/jumper/jump/out/example",
+      "pad": {
+        "button": "A",
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_space"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      }
+    },
+    "claw_left": {
+      "task": "jumper.five_foot",
+      "from": "logs/jumper/jumper.five_foot/2026-09-28_08-38-48/model_86600.pt",
+      "export": "tasks/jumper/five_foot/out/example",
+      "hook": {
+        "side": "left"
+      },
+      "pad": {
+        "button": "LB",
+        "on": "toggle",
+        "from": [
+          "locomotion",
+          "claw_right"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_v"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion",
+          "claw_right"
+        ]
+      }
+    },
+    "claw_right": {
+      "task": "jumper.five_foot",
+      "from": "logs/jumper/jumper.five_foot/2026-09-28_08-38-48/model_86600.pt",
+      "export": "tasks/jumper/five_foot/out/example",
+      "hook": {
+        "side": "right"
+      },
+      "pad": {
+        "button": "RB",
+        "on": "toggle",
+        "from": [
+          "locomotion",
+          "claw_left"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_b"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion",
+          "claw_left"
+        ]
+      }
+    },
+    "dance_crab": {
+      "task": "jumper.dance",
+      "from": "logs/jumper/jumper.dance/2026-09-26_17-54-50/model_2300.pt",
+      "export": "tasks/jumper/dance/out/example",
+      "pad": {
+        "button": "dpad_up",
+        "on": "toggle",
+        "with": "menu",
+        "from": [
+          "locomotion",
+          "claw_left",
+          "claw_right",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_1",
+          "keypad_1"
+        ],
+        "on": "toggle",
+        "with": "ctrl",
+        "from": [
+          "locomotion",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      }
+    },
+    "dance_brazilian": {
+      "task": "jumper.dance_brazilian",
+      "from": "logs/jumper/jumper.dance_brazilian/2026-09-29_14-52-27/model_1999.pt",
+      "export": "tasks/jumper/dance_brazilian/out/example",
+      "pad": {
+        "button": "dpad_down",
+        "on": "toggle",
+        "with": "menu",
+        "from": [
+          "locomotion",
+          "claw_left",
+          "claw_right",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_2",
+          "keypad_2"
+        ],
+        "on": "toggle",
+        "with": "ctrl",
+        "from": [
+          "locomotion",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      }
+    },
+    "dance_maze": {
+      "task": "jumper.dance_maze",
+      "from": "logs/jumper/jumper.dance_maze/2026-09-29_16-21-47/model_1999.pt",
+      "export": "tasks/jumper/dance_maze/out/example",
+      "pad": {
+        "button": "dpad_left",
+        "on": "toggle",
+        "with": "menu",
+        "from": [
+          "locomotion",
+          "claw_left",
+          "claw_right",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_3",
+          "keypad_3"
+        ],
+        "on": "toggle",
+        "with": "ctrl",
+        "from": [
+          "locomotion",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      }
+    },
+    "dance_dream_wings": {
+      "task": "jumper.dance_dream_wings",
+      "from": "logs/jumper/jumper.dance_dream_wings/2026-09-29_15-13-00/model_1999.pt",
+      "export": "tasks/jumper/dance_dream_wings/out/example",
+      "pad": {
+        "button": "dpad_right",
+        "on": "toggle",
+        "with": "menu",
+        "from": [
+          "locomotion",
+          "claw_left",
+          "claw_right",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_4",
+          "keypad_4"
+        ],
+        "on": "toggle",
+        "with": "ctrl",
+        "from": [
+          "locomotion",
+          "dance_crab",
+          "dance_brazilian",
+          "dance_maze",
+          "dance_dream_wings",
+          "gesture_hello",
+          "gesture_bow",
+          "gesture_paw",
+          "gesture_salute"
+        ]
+      }
+    },
+    "gesture_hello": {
+      "task": "jumper.gesture_hello",
+      "from": "logs/jumper/jumper.gesture_hello/2026-09-29_16-38-37/model_999.pt",
+      "export": "tasks/jumper/gesture_hello/out/example",
+      "pad": {
+        "button": "dpad_up",
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_1",
+          "keypad_1"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      }
+    },
+    "gesture_bow": {
+      "task": "jumper.gesture_bow",
+      "from": "logs/jumper/jumper.gesture_bow/2026-09-29_16-48-55/model_999.pt",
+      "export": "tasks/jumper/gesture_bow/out/example",
+      "pad": {
+        "button": "dpad_down",
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_2",
+          "keypad_2"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      }
+    },
+    "gesture_paw": {
+      "task": "jumper.gesture_paw",
+      "from": "logs/jumper/jumper.gesture_paw/2026-09-29_17-07-15/model_999.pt",
+      "export": "tasks/jumper/gesture_paw/out/example",
+      "pad": {
+        "button": "dpad_left",
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_3",
+          "keypad_3"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      }
+    },
+    "gesture_salute": {
+      "task": "jumper.gesture_salute",
+      "from": "logs/jumper/jumper.gesture_salute/2026-09-29_17-18-03/model_999.pt",
+      "export": "tasks/jumper/gesture_salute/out/example",
+      "pad": {
+        "button": "dpad_right",
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      },
+      "keys": {
+        "key": [
+          "key_4",
+          "keypad_4"
+        ],
+        "on": "toggle",
+        "from": [
+          "locomotion"
+        ]
+      }
+    }
+  }
+}

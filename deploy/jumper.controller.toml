@@ -1,0 +1,180 @@
+# The state machine, minus the modes.
+#
+# `manifests.json` owns which modes exist, where each one came from and which
+# key or button reaches it. This file owns everything else: the cascade, the
+# safety limits, and states that run no model. The bundler composes the two and
+# refuses if either says the other's half -- two files naming the same key is
+# how the two come to disagree, and nothing reads both.
+#
+# The cascade is **ordered** and the first rule that matches wins. That order is
+# the safety argument: `feedback_stale` is first because a controller with no
+# feedback must not be running a policy, whatever else is true.
+
+[fsm]
+initial_state = "locomotion"
+warm_start_ref = "locomotion"
+safe_state = "safe"
+
+# One mode latched at a time: the last switch pressed is the mode (asked for on
+# 2026-09-29, with Control-agent 3.1's layout). Without it latches are a set and
+# the cascade's order settles two that are on together -- LB in the right claw
+# would latch *behind* it, and a dance entered from a claw would hand back to
+# the claw when it ended rather than to walking.
+exclusive = true
+
+# Radians of tilt before the cascade drops to `safe`. 50 degrees, chosen -- not
+# measured, and not inherited either: it replaces a value that came from a
+# controller this project does not ship.
+#
+# What *is* measured is the margin. Every recorded motion in this bundle stays
+# far inside it, read from the `root_quat` / `base_quat` each one ships with:
+#
+#   crab dance            16.4 deg over 11784 frames
+#   Brazilian dance        1.0 deg over  3304
+#   maze dance             0.0 deg over   500
+#   dream-wings dance      3.5 deg over  2780
+#   jump                   4.3 deg over   368
+#   hello gesture          7.9 deg over   366
+#   bow gesture            7.9 deg over   428
+#   paw gesture            9.9 deg over   319
+#   salute gesture         6.7 deg over   301
+#
+# So the limit is not sized to let a motion through -- it is where an attitude
+# stops being one the robot chose.
+#
+# No state sets `skip_tilt_check`, so this applies during the jump as well.
+tilt_limit = 0.873
+
+# Feedback older than this is not feedback. 100 ms is five control periods at
+# 50 Hz: long enough to ride out a dropped sample, short enough that a bus that
+# has actually stopped is caught before the robot has moved far.
+state_timeout_ms = 100
+
+# The operator going away must not leave a mode latched. A held mode keeps the
+# FSM in a state that may suspend the tilt fallback, with nobody left to release
+# it.
+command_timeout_ms = 500
+
+# Both hand-offs wait on the **measured pose**, never a timer. Gains too soft to
+# converge mean it waits indefinitely and the robot soft-holds -- deliberate,
+# because the alternative is starting a policy from a pose it never trained
+# around. `is_running_policy` is how a host tells the two apart.
+mode_switch_ramp_s = 1.0
+pose_reach_tol = 0.10
+warm_start_duration_s = 2.0
+# The ramp's own PD, in the servo firmware's units -- which are MuJoCo's: the
+# contract's kp 10 goes to the servo unscaled. **Was 0.15 / 0.01**, copied from
+# an rl-wbc-fsm that predates the firmware taking those units (it once needed
+# ~0.015 to convert). rl-wbc-fsm moved to 15 / 0.8 on 2026-08-17 (ca45416): at
+# kp 10 the weight-bearing joints did not come within tolerance in a second.
+# Measured here with `play --app` (2026-09-28): at 0.15 / 0.01, switching from
+# locomotion into claw_left put the base on the floor (0.04 m against a 0.107 m
+# stance) and the ramp never handed over; at 15 / 0.8 the robot stayed up and
+# the claw's policy took over at its stowed arm.
+ramp_kp = 15.0
+ramp_kd = 0.8
+
+# How long after one press of a control the next still counts as the same click
+# gesture (`single` ... `quintuple` in a manifest's `on`), in ms. Chosen on
+# 2026-09-29, not measured: a pad button travels further than a mouse button,
+# and five presses have to fit. Measured on the host's timestamps, not in ticks.
+click_window_ms = 300
+
+# Holds whatever pose it was in, with damping only. Runs no model, so it is
+# where a missing, unloadable or misbehaving policy ends up.
+[[fsm.state]]
+name = "safe"
+hold_current = true
+kd = 0.01
+
+[[fsm.rule]]
+when = "feedback_stale"
+enter = "safe"
+
+[[fsm.rule]]
+when = "tilted"
+enter = "safe"
+
+# Out of `safe` only by the operator's initial state, and only once feedback is
+# back -- the two rules above are ahead of this one, so this is not reachable
+# while either still holds.
+[[fsm.rule]]
+when = "in_state:safe"
+enter = "@initial"
+
+# Below the two safety rules and above the fallback: the operator can ask for
+# the jump, and cannot ask for it while the robot is tilted or blind. That
+# ordering is the whole safety argument, and it is why this is a cascade rather
+# than a set of independent bindings.
+#
+# `button:jump` is the manifest's binding by name -- the pad's and the
+# keyboard's, which share it. Entering is the whole of asking for the jump: its
+# contract says `starts_on_entry`, so the recording starts once the switch-in
+# ramp has reached the jump's home pose, and there is no `go` inside the mode to
+# bind.
+[[fsm.rule]]
+when = "button:jump"
+enter = "jump"
+
+# Same place in the order and for the same reason: the operator can ask for a
+# dance, and cannot ask for one while the robot is tilted or blind. Each of
+# these releases itself when its recording ends -- see
+# `Controller::take_completed` -- and the manifest's `leave_motion` (Menu, or
+# Ctrl, on its own) lets go of one early; none needs a rule here.
+[[fsm.rule]]
+when = "button:dance_crab"
+enter = "dance_crab"
+
+[[fsm.rule]]
+when = "button:dance_brazilian"
+enter = "dance_brazilian"
+
+[[fsm.rule]]
+when = "button:dance_maze"
+enter = "dance_maze"
+
+[[fsm.rule]]
+when = "button:dance_dream_wings"
+enter = "dance_dream_wings"
+
+# The d-pad's gestures, from rl-wbc-fsm's fixed actions: recordings like the
+# dances, ending by themselves and left early the same way.
+[[fsm.rule]]
+when = "button:gesture_hello"
+enter = "gesture_hello"
+
+[[fsm.rule]]
+when = "button:gesture_bow"
+enter = "gesture_bow"
+
+[[fsm.rule]]
+when = "button:gesture_paw"
+enter = "gesture_paw"
+
+[[fsm.rule]]
+when = "button:gesture_salute"
+enter = "gesture_salute"
+
+# The claw, carried on either side: one jumper.five_foot export, two modes, the
+# side in each one's hook. Below the recordings, and that is not only habit:
+# the pad's Menu + d-pad chords reach a dance from a claw mode, whose own
+# controls keep the d-pad for the arm, and the crate allows that sharing only
+# when the chord's rule comes first -- the press leaves the claw before its hook
+# can read the direction (`FsmConfig::chord_leaves_first`).
+#
+# With `exclusive` above, two claws are never latched together, so their order
+# no longer settles anything: RB in the left claw is the right claw, and LB in
+# the right one the left.
+[[fsm.rule]]
+when = "button:claw_right"
+enter = "claw_right"
+
+[[fsm.rule]]
+when = "button:claw_left"
+enter = "claw_left"
+
+# The last rule must be `always`: a cascade that can fall through the bottom has
+# no defined behaviour, and the crate refuses to load one that does.
+[[fsm.rule]]
+when = "always"
+enter = "locomotion"

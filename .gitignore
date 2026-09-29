@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Training artefacts
+logs/
+runs/
+outputs/
+# scripts/export.py's default output directory
+out/
+*.pt
+*.onnx
+# deploy/onnx2rknn.py's output, and the record of what built it
+*.rknn
+*.rknn.json
+wandb/
+
+# Rust build output. No leading slash: it matches at every depth, so
+# deploy/fsm/target/ is covered without naming it.
+target/
+# cargo-zigbuild probes zig by compiling an empty file into the working
+# directory -- the crate's, in docker-build.sh -- on every macOS build.
+# `docker-build.sh` removes it; ignored as well, because `deploy.py` reads
+# `git status` to decide whether the source is clean, and one left by a failed
+# build would mark every later one `-dirty`.
+.intentionally-empty-file.o
+
+# Warp kernel cache
+.warp/
+
+# Rockchip's NPU header and runtime, fetched by deploy/fsm/vendor/rknpu2/fetch.sh.
+# They are under Rockchip's own licence, which this repository cannot re-grant.
+deploy/fsm/vendor/rknpu2/include/
+deploy/fsm/vendor/rknpu2/lib/
+
+# jumper.dance's material. Your own choreography and music stay out of the repository
+# -- they are a performance, not the framework -- but the demo's choreography and face
+# animation are committed, 30.5 MB, so the task runs from a fresh clone like every
+# other one. The demo's music is not: its source could not be established, so it is
+# not published with the repository. Training does not need it.
+# `.cache/` stays out: it is derived from `demo.npz` and rebuilt on demand.
+tasks/jumper/dance/media/*
+!tasks/jumper/dance/media/README.md
+!tasks/jumper/dance/media/demo.npz
+!tasks/jumper/dance/media/demo.mp4
+# The dances and gestures imported from rl-wbc-fsm (`tools/import_wbc_dances.py`,
+# `tools/import_wbc_gestures.py`): each task's clip is committed, its conversion
+# cache is not.
+tasks/jumper/dance_*/media/.cache/
+tasks/jumper/gesture_*/media/.cache/
+
+# The log MuJoCo leaves in the working directory at runtime
+MUJOCO_LOG.TXT
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local configuration and secrets
+# Note that .env itself **is committed** -- it holds the project-level defaults
+# (see its header) and is not ignored here. Personal overrides and secrets go
+# in .env.local, which takes precedence and is not committed.
+.env.local
+.claude/launch.json

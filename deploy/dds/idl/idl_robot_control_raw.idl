@@ -1,0 +1,31 @@
+module RobotControlRaw
+{
+    @extensibility(FINAL)
+    struct ControlRaw
+    {
+        uint64 timestamp_ns;
+        uint32 sequence_id;
+        boolean connected;
+        uint16 vendor_id;
+        uint16 product_id;
+        string profile_id;
+        boolean A;
+        boolean B;
+        boolean X;
+        boolean Y;
+        boolean LB;
+        boolean RB;
+        boolean menu;
+        boolean home;
+        boolean L3;
+        boolean R3;
+        int8 dpad_x;
+        int8 dpad_y;
+        float Lx;
+        float Ly;
+        float Rx;
+        float Ry;
+        float LT;
+        float RT;
+    };
+};

@@ -1,0 +1,90 @@
+# VL53L9CX measurement model: how a zone's reported range differs from the geometric one.
+#
+# Read by `tasks/jumper/common/tof.py` (`ToFErrorModel.from_datasheet`), which applies it
+# on top of one ray per zone. Every number is ST DS14879 Rev 6 (June 2026), cited by
+# table, at the operating point the characterisation uses (Table 21):
+#
+#   Precision mode, 54 x 42 zones, 30 fps, 4 ms exposure, DSS on, regular power,
+#   indoor (0 W/m²), gray 17 % target (12 % reflectance in IR), no cover glass
+#
+# except the frame rate, which is the robot's own (see `frame`).
+#
+# Gray 17 % rather than 62 % because it is the darker of the two targets characterised
+# and never the better one.
+#
+# **A bound is used as the value.** The datasheet's "< 8 mm" and "< 1 mm" are "typical
+# performances on a typical sensor" (§8.2), so each effect is applied at its bound: a
+# policy trained on this has met a typical device's worst rather than its best.
+#
+# Not in this file:
+#   - zone count, field of view, range limits: `camera_config.yaml` (`tof`, `depth`)
+#   - lens distortion: not simulated. Zones sit on an ideal pinhole grid, i.e. the host
+#     is taken to have corrected distortion already (§8.3's f and alpha)
+#
+# Not board-calibrated. The previous version of this file also carried amplitude,
+# ambient, confidence, outlier and spatial-correlation sections; none of them came from
+# the datasheet and nothing read them, so they are gone rather than kept as numbers
+# that look sourced.
+
+frame:
+  # **The robot runs the dToF at 50 Hz** (decided 2026-09-29). The chip allows up to
+  # 100 (Table 2), and Table 9's example profiles run the full 54 x 42 array at
+  # anything from one frame an hour to 100 fps. Everything below was characterised at
+  # 30 fps (Table 21) and the datasheet gives no 50 fps column, so those numbers stand
+  # in for it: the 4 ms exposure they were measured with fits a 20 ms frame as it fits
+  # a 33 ms one.
+  #
+  # At the 50 Hz control loop most jumper tasks run, that is a fresh frame every step;
+  # at the 200 Hz of posture, jump and ref_free_jump, every fourth.
+  rate_hz: 50.0
+
+accuracy:
+  # Table 27, Precision 54x42, indoor, gray 17 %, centre ROI: mean absolute error
+  # against ground truth (§8.4.2).
+  #   short (< 1 m): < 8 mm      long (>= 1 m): < 0.5 %
+  # One offset per device, uniform within +/- this bound and redrawn at every episode
+  # start: a calibration error, constant for a unit and different between units.
+  short_below_m: 1.0
+  short_m: 0.008
+  long_fraction: 0.005
+
+uniformity:
+  # Table 35, Precision 54x42, gray 17 %: the spatial standard deviation of the
+  # time-averaged depth, i.e. fixed pattern noise (§8.4.4).
+  #   150 mm: < 4 mm      500 mm: < 3.5 mm      1000 mm: < 4.5 mm
+  # A fixed per-zone offset, Gaussian with this standard deviation, redrawn with the
+  # device. Linear between the three distances, held at the end values outside them:
+  # the datasheet stops at 1 m.
+  at_m: [0.15, 0.5, 1.0]
+  std_m: [0.004, 0.0035, 0.0045]
+
+temporal_noise:
+  # Table 31, Precision 54x42, indoor, gray 17 %, TNR on: the standard deviation over
+  # frames (§8.4.3).
+  #   short (< 2 m): < 1 mm      long (>= 2 m): < 0.07 %
+  # Drawn afresh for every exposure. TNR correlates consecutive frames on the chip and
+  # the datasheet does not say how strongly, so nothing here correlates them.
+  short_below_m: 2.0
+  short_m: 0.001
+  long_fraction: 0.0007
+
+detection:
+  # §8.2: maximum range is defined at a 99 % detection rate, so 1 % of measurements
+  # there return no valid range. Applied at every range, which is the bound --
+  # detection closer in is at least as good.
+  #
+  # **Off** (decided 2026-09-29): the zones that drop out are not simulated, and
+  # every zone in range reports. The number is kept so that turning it back on
+  # is this one switch.
+  enabled: false
+  invalid_probability: 0.01
+
+edge:
+  # **Not from the datasheet.** A zone straddling a depth edge sees two histogram peaks
+  # and reports the stronger, and which one is stronger is settled afresh every
+  # exposure. The rate is the reference histogram implementation's, as used on the
+  # `feature/dToF` branch (46484b3): 4.1 % of always-valid zones changed surface
+  # between consecutive frames, p99 94 mm. A zone takes one of its four neighbours'
+  # range with this probability per exposure -- nothing changes on a continuous
+  # surface, and at an edge the reading jumps to the other one.
+  wrong_surface_probability: 0.04

@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kk-policy-bundle/1",
+  "title": "A Jumper bundle: <name>/ and <name>.app",
+  "description": "What `scripts/deploy.py --bundle` writes and every host reads: the robot's board, a browser, `play --app`. The `.app` is an ordinary zip of the bundle directory with the contents at its root. This schema validates `bundle.json`, the bundle's manifest; `x-files` below says which files the archive holds, in what format, and which field names each. tests/test_app_schema.py holds a built bundle to both.",
+
+  "x-files": [
+    {"path": "^bundle\\.json$", "required": true, "format": "json", "is": "this schema's document: every file, its size and SHA-256, and which host takes what"},
+    {"path": "^README\\.md$", "required": true, "format": "markdown", "is": "the integration guide, from deploy/fsm/BUNDLE_README.md"},
+    {"path": "^controller\\.toml$", "required": true, "format": "toml", "is": "the FSM: modes, the rules that switch between them, the keys and buttons", "namedBy": "fsm"},
+    {"path": "^manual\\.en\\.json$", "required": true, "format": "json", "schema": "#/$defs/manual", "is": "every key and button the bundle reads and what it does, in English, generated at build time", "namedBy": "manuals.en"},
+    {"path": "^manual\\.[a-z]{2}(-[A-Za-z]+)?\\.json$", "required": false, "format": "json", "schema": "#/$defs/manual", "is": "a translation of manual.en.json, added with `deploy.py --translate`", "namedBy": "manuals.<language>"},
+    {"path": "^reference\\.json$", "required": false, "format": "json", "is": "kk-policy-reference/1: recorded frames every host replays to measure that it agrees; absent only where onnxruntime was not installed at build time", "namedBy": "reference"},
+    {"path": "^[^/]+\\.trajectory\\.json$", "required": false, "format": "json", "is": "a recording a reference-guided mode is driven by, beside the contracts", "namedBy": "modes.<mode>.trajectory"},
+    {"path": "^[a-z][a-z0-9_]*\\.json$", "required": true, "format": "json", "is": "one mode's contract (the export's layout.json): observation layout, joint order, gains, controls", "namedBy": "modes.<mode>.contract"},
+    {"path": "^models/[a-z][a-z0-9_]*\\.onnx$", "required": true, "format": "onnx", "is": "a policy, for the browser and play; one per export, shared by the modes on it", "namedBy": "modes.<mode>.models.onnx"},
+    {"path": "^models/[a-z][a-z0-9_]*\\.rknn$", "required": false, "format": "rknn", "is": "the same policy converted for the RK3576 NPU; a mode without one runs on a stub on the board", "namedBy": "modes.<mode>.models.rknn"},
+    {"path": "^runtime/web/controller\\.wasm$", "required": true, "format": "wasm", "is": "the controller for a browser; one build for every CPU", "namedBy": "runtimes.web.wasm"},
+    {"path": "^runtime/web/controller\\.js$", "required": true, "format": "javascript", "is": "its wasm-bindgen binding", "namedBy": "runtimes.web.glue"},
+    {"path": "^runtime/mjlab/macosx-[a-z0-9._-]+/controller\\.so$", "required": false, "format": "mach-o", "is": "the same for macOS: macosx-universal2 is cross-built with zig, arm64 and x86_64 in one file, and loaded on any Mac whatever version its Python's platform string carries; a Mac that built the bundle adds its own under its exact platform", "namedBy": "runtimes.mjlab.extensions.<platform>.file"},
+    {"path": "^runtime/mjlab/[a-z0-9._-]+/controller\\.so$", "required": false, "format": "elf-shared-object", "is": "the controller as a Python extension (abi3) for play --app, one per platform it was built on", "namedBy": "runtimes.mjlab.extensions.<platform>.file"},
+    {"path": "^runtime/mjlab/win-[a-z0-9_]+/controller\\.pyd$", "required": false, "format": "pe-dll", "is": "the same, for play --app on Windows: cross-built with MinGW, importing python3.dll and nothing outside Windows itself", "namedBy": "runtimes.mjlab.extensions.<platform>.file"},
+    {"path": "^runtime/board/controller$", "required": false, "format": "elf-aarch64", "is": "the robot's whole program, cross-compiled; absent until deploy/fsm/docker-build.sh has run, which bundle.json's notes then say", "namedBy": "runtimes.board.file"}
+  ],
+
+  "type": "object",
+  "required": ["schema", "runtimes", "fsm", "modes", "notes", "files", "manuals", "reference"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "kk-policy-bundle/1"},
+    "runtimes": {
+      "description": "Each host's build of the controller, keyed by host. A host whose build this bundle does not carry has no entry, and `notes` says how to add it.",
+      "type": "object",
+      "required": ["web"],
+      "additionalProperties": false,
+      "properties": {
+        "web": {"$ref": "#/$defs/webRuntime"},
+        "mjlab": {"$ref": "#/$defs/mjlabRuntime"},
+        "board": {"$ref": "#/$defs/boardRuntime"}
+      }
+    },
+    "fsm": {"const": "controller.toml"},
+    "modes": {
+      "description": "Every state that runs a model, by the name controller.toml gives it.",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {"^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/mode"}},
+      "additionalProperties": false
+    },
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "reference": {
+      "description": "The reference vectors' file, or null when none could be recorded.",
+      "type": ["string", "null"]
+    },
+    "manuals": {
+      "description": "The manual per language. English is always there; a translation is added after the build.",
+      "type": "object",
+      "required": ["en"],
+      "patternProperties": {"^[a-z]{2}(-[A-Za-z]+)?$": {"type": "string", "pattern": "^manual\\.[a-z]{2}(-[A-Za-z]+)?\\.json$"}},
+      "additionalProperties": false
+    },
+    "built_from": {
+      "description": "Where every mode came from, for a bundle built from deploy/manifests.json.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["task", "from", "export"],
+        "properties": {
+          "task": {"type": "string"},
+          "from": {"type": "string"},
+          "export": {"type": "string"}
+        }
+      }
+    },
+    "files": {
+      "description": "Every file in the bundle but bundle.json itself, by its path inside it.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["bytes", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {"type": "integer"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "mode": {
+      "type": "object",
+      "required": ["models", "contract", "observation", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "models": {
+          "description": "The mode's policy in every format a host runs: `onnx` always, `rknn` once converted.",
+          "type": "object",
+          "required": ["onnx"],
+          "additionalProperties": false,
+          "properties": {
+            "onnx": {"type": "string", "pattern": "^models/[a-z][a-z0-9_]*\\.onnx$"},
+            "rknn": {"type": "string", "pattern": "^models/[a-z][a-z0-9_]*\\.rknn$"}
+          }
+        },
+        "contract": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.json$"},
+        "observation": {"type": "integer"},
+        "action": {"type": "integer"},
+        "trajectory": {"type": "string", "pattern": "\\.trajectory\\.json$"}
+      }
+    },
+    "webRuntime": {
+      "type": "object",
+      "required": ["model", "glue", "wasm", "commit", "unverifiedByTheConsumer"],
+      "properties": {
+        "model": {"const": "onnx"},
+        "glue": {"const": "runtime/web/controller.js"},
+        "wasm": {"const": "runtime/web/controller.wasm"},
+        "commit": {"type": "string"},
+        "unverifiedByTheConsumer": {"type": "string"}
+      }
+    },
+    "mjlabRuntime": {
+      "type": "object",
+      "required": ["model", "extensions", "commit"],
+      "properties": {
+        "model": {"const": "onnx"},
+        "extensions": {
+          "description": "By `sysconfig.get_platform()` of the machine it runs on: the build machine's, and `win-amd64` and `macosx-universal2`, cross-built. macOS is keyed without a version (`mjrl.app_play.extension_for`).",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["file", "abi"],
+            "properties": {
+              "file": {"type": "string", "pattern": "^runtime/mjlab/[a-z0-9._-]+/controller\\.(so|pyd)$"},
+              "abi": {"type": "string"}
+            }
+          }
+        },
+        "commit": {"type": "string"}
+      }
+    },
+    "boardRuntime": {
+      "type": "object",
+      "required": ["model", "file", "platform", "commit"],
+      "properties": {
+        "model": {"const": "rknn"},
+        "file": {"const": "runtime/board/controller"},
+        "platform": {"const": "aarch64-unknown-linux-gnu"},
+        "commit": {"type": "string"}
+      }
+    },
+    "manual": {
+      "description": "manual.<language>.json. A translation keeps every field of manual.en.json and changes only the text ones: source, summary, enter, leave, keyboard, pad, does. The pad and the keyboard are listed apart, in each mode and among the switches (since 2026-09-29).",
+      "type": "object",
+      "required": ["schema", "language", "bundle", "source", "modes", "switches"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"const": "kk-bundle-manual/1"},
+        "language": {"type": "string", "pattern": "^[a-z]{2}(-[A-Za-z]+)?$"},
+        "bundle": {"type": "string"},
+        "source": {"type": "string"},
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["mode", "task", "default", "summary", "enter", "leave", "keyboard", "controls", "keys"],
+            "additionalProperties": false,
+            "properties": {
+              "mode": {"type": "string"},
+              "task": {"type": ["string", "null"]},
+              "default": {"type": "boolean"},
+              "summary": {"type": "string"},
+              "enter": {"type": "string"},
+              "leave": {"type": "string"},
+              "keyboard": {"type": "string"},
+              "controls": {
+                "description": "The pad in this mode: each control and what it does.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["control", "pad", "does"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "control": {"type": "string"},
+                    "pad": {"type": "string"},
+                    "does": {"type": "string"}
+                  }
+                }
+              },
+              "keys": {
+                "description": "The keyboard in this mode: each keystroke, as printed on the keys, and what it does.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["key", "does"],
+                  "additionalProperties": false,
+                  "properties": {"key": {"type": "string"}, "does": {"type": "string"}}
+                }
+              }
+            }
+          }
+        },
+        "switches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["device", "control", "with", "keys", "pad", "does", "from"],
+            "additionalProperties": false,
+            "properties": {
+              "device": {"enum": ["pad", "keyboard"]},
+              "control": {"type": "string"},
+              "with": {"type": ["string", "null"]},
+              "keys": {"type": "array", "items": {"type": "string"}},
+              "pad": {"type": ["string", "null"]},
+              "does": {"type": "string"},
+              "from": {"type": ["array", "null"], "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

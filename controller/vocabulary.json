@@ -1,0 +1,523 @@
+{
+  "schema": "kk-control-vocabulary/2",
+  "_what_this_is": [
+    "Everything a pad or a keyboard can say, and nothing about what any of it",
+    "means.",
+    "",
+    "That split is this package's own rule -- it reports that the left stick is at",
+    "(0.4, -0.9), that A is down and that keypad_8 is down, and deciding that any",
+    "of that is 0.2 m/s forward belongs to whoever is driving. So the words live",
+    "here and the meanings live with the consumer: `[[fsm.button]]` in a deploy",
+    "manifest, `controls.yaml` in a task.",
+    "",
+    "Read by three programs and written by none of them:",
+    "  controller/vocabulary.py        python -m controller --vocabulary",
+    "  deploy/fsm/src/vocabulary.rs    include_str!, so a board carries no file",
+    "  tasks/.../mdp/controls.py       validating a task's controls.yaml",
+    "",
+    "It had a copy in each of those for a day. Adding a word meant remembering two",
+    "other files, and forgetting one leaves a name that reads as supported and is",
+    "refused on build -- or, worse, the other way round.",
+    "",
+    "Was `kk-gamepad-vocabulary/1`, when the pad was the only thing it described.",
+    "The keys below were a closed list too and were not written down anywhere a",
+    "consumer could check, so `[[fsm.button]] key = ...` took any string at all: a",
+    "typo loaded, bound nothing, and looked exactly like a rule that had not fired."
+  ],
+  "_source": {
+    "service": "control-pod-svc",
+    "repo": "robot/embedded-software/soc/apps/control-pod-svc",
+    "read_from": [
+      "include/gamepad/gamepad_state.hpp",
+      "src/gamepad/gamepad_dds_message.cpp"
+    ],
+    "topic": "RobotControlRaw_ControlRaw",
+    "note": "It normalises three different pads onto these names, so they mean the same thing on a bench and on the robot. Its own docs put the count at 18: 10 buttons + 2 dpad axes + 6 axes."
+  },
+  "buttons": [
+    {
+      "name": "A"
+    },
+    {
+      "name": "B"
+    },
+    {
+      "name": "X",
+      "unresolved": "controller/xbox.py reads evdev 307 as `y` and 308 as `x`; the service's table reads 307 as X and 308 as Y. One is wrong about which physical button it is and pressing it is the only way to find out which."
+    },
+    {
+      "name": "Y",
+      "unresolved": "see X"
+    },
+    {
+      "name": "LB"
+    },
+    {
+      "name": "RB"
+    },
+    {
+      "name": "menu"
+    },
+    {
+      "name": "home",
+      "note": "`xbox` in controller/xbox.py. Same button, two names."
+    },
+    {
+      "name": "L3"
+    },
+    {
+      "name": "R3"
+    }
+  ],
+  "dpad": [
+    {
+      "name": "dpad_up"
+    },
+    {
+      "name": "dpad_down"
+    },
+    {
+      "name": "dpad_left"
+    },
+    {
+      "name": "dpad_right"
+    }
+  ],
+  "_dpad_note": "The wire carries dpad_x / dpad_y as -1 / 0 / +1, which no gesture can read, so they are offered as four booleans. The service negates dpad_y so +1 is up; it does not negate Ly, two lines away in the same function.",
+  "axes": [
+    {
+      "name": "Lx",
+      "range": [
+        -1,
+        1
+      ]
+    },
+    {
+      "name": "Ly",
+      "range": [
+        -1,
+        1
+      ],
+      "note": "Not negated by the service. Forward is the negative end, by evdev's convention -- stated in controller/xbox.py and never measured against this service."
+    },
+    {
+      "name": "Rx",
+      "range": [
+        -1,
+        1
+      ]
+    },
+    {
+      "name": "Ry",
+      "range": [
+        -1,
+        1
+      ]
+    },
+    {
+      "name": "LT",
+      "range": [
+        0,
+        1
+      ],
+      "note": "Unipolar: a trigger never reports negative."
+    },
+    {
+      "name": "RT",
+      "range": [
+        0,
+        1
+      ]
+    }
+  ],
+  "_axes_note": "Sticks carry a 0.15 deadband that is already applied **and rescaled**, so full deflection still reaches ±1. A consumer that applies its own on top narrows what a person can ask for and cannot see that it has.",
+  "keys": [
+    {
+      "name": "keypad_0",
+      "glfw": 320,
+      "browser": "Numpad0"
+    },
+    {
+      "name": "keypad_1",
+      "glfw": 321,
+      "browser": "Numpad1"
+    },
+    {
+      "name": "keypad_2",
+      "glfw": 322,
+      "browser": "Numpad2"
+    },
+    {
+      "name": "keypad_3",
+      "glfw": 323,
+      "browser": "Numpad3"
+    },
+    {
+      "name": "keypad_4",
+      "glfw": 324,
+      "browser": "Numpad4"
+    },
+    {
+      "name": "keypad_5",
+      "glfw": 325,
+      "browser": "Numpad5"
+    },
+    {
+      "name": "keypad_6",
+      "glfw": 326,
+      "browser": "Numpad6"
+    },
+    {
+      "name": "keypad_7",
+      "glfw": 327,
+      "browser": "Numpad7"
+    },
+    {
+      "name": "keypad_8",
+      "glfw": 328,
+      "browser": "Numpad8"
+    },
+    {
+      "name": "keypad_9",
+      "glfw": 329,
+      "browser": "Numpad9"
+    },
+    {
+      "name": "keypad_.",
+      "glfw": 330,
+      "browser": "NumpadDecimal"
+    },
+    {
+      "name": "keypad_/",
+      "glfw": 331,
+      "browser": "NumpadDivide"
+    },
+    {
+      "name": "keypad_*",
+      "glfw": 332,
+      "browser": "NumpadMultiply"
+    },
+    {
+      "name": "keypad_-",
+      "glfw": 333,
+      "browser": "NumpadSubtract"
+    },
+    {
+      "name": "keypad_+",
+      "glfw": 334,
+      "browser": "NumpadAdd"
+    },
+    {
+      "name": "keypad_enter",
+      "glfw": 335,
+      "browser": "NumpadEnter"
+    },
+    {
+      "name": "key_w",
+      "glfw": 87,
+      "browser": "KeyW"
+    },
+    {
+      "name": "key_s",
+      "glfw": 83,
+      "browser": "KeyS"
+    },
+    {
+      "name": "key_a",
+      "glfw": 65,
+      "browser": "KeyA"
+    },
+    {
+      "name": "key_d",
+      "glfw": 68,
+      "browser": "KeyD"
+    },
+    {
+      "name": "key_j",
+      "glfw": 74,
+      "browser": "KeyJ"
+    },
+    {
+      "name": "key_l",
+      "glfw": 76,
+      "browser": "KeyL"
+    },
+    {
+      "name": "key_i",
+      "glfw": 73,
+      "browser": "KeyI"
+    },
+    {
+      "name": "key_k",
+      "glfw": 75,
+      "browser": "KeyK"
+    },
+    {
+      "name": "key_m",
+      "glfw": 77,
+      "browser": "KeyM"
+    },
+    {
+      "name": "key_o",
+      "glfw": 79,
+      "browser": "KeyO"
+    },
+    {
+      "name": "key_q",
+      "glfw": 81,
+      "browser": "KeyQ"
+    },
+    {
+      "name": "key_h",
+      "glfw": 72,
+      "browser": "KeyH"
+    },
+    {
+      "name": "key_b",
+      "glfw": 66,
+      "browser": "KeyB"
+    },
+    {
+      "name": "key_g",
+      "glfw": 71,
+      "browser": "KeyG"
+    },
+    {
+      "name": "key_space",
+      "glfw": 32,
+      "browser": "Space"
+    },
+    {
+      "name": "key_right",
+      "glfw": 262,
+      "browser": "ArrowRight"
+    },
+    {
+      "name": "key_left",
+      "glfw": 263,
+      "browser": "ArrowLeft"
+    },
+    {
+      "name": "key_down",
+      "glfw": 264,
+      "browser": "ArrowDown"
+    },
+    {
+      "name": "key_up",
+      "glfw": 265,
+      "browser": "ArrowUp"
+    },
+    {
+      "name": "key_left_ctrl",
+      "glfw": 341,
+      "browser": "ControlLeft"
+    },
+    {
+      "name": "key_right_ctrl",
+      "glfw": 345,
+      "browser": "ControlRight"
+    },
+    {
+      "name": "key_1",
+      "glfw": 49,
+      "browser": "Digit1"
+    },
+    {
+      "name": "key_2",
+      "glfw": 50,
+      "browser": "Digit2"
+    },
+    {
+      "name": "key_3",
+      "glfw": 51,
+      "browser": "Digit3"
+    },
+    {
+      "name": "key_4",
+      "glfw": 52,
+      "browser": "Digit4"
+    },
+    {
+      "name": "key_n",
+      "glfw": 78,
+      "browser": "KeyN"
+    },
+    {
+      "name": "key_u",
+      "glfw": 85,
+      "browser": "KeyU"
+    },
+    {
+      "name": "key_v",
+      "glfw": 86,
+      "browser": "KeyV"
+    },
+    {
+      "name": "key_semicolon",
+      "glfw": 59,
+      "browser": "Semicolon"
+    },
+    {
+      "name": "key_escape",
+      "glfw": 256,
+      "browser": "Escape"
+    },
+    {
+      "name": "key_left_shift",
+      "glfw": 340,
+      "browser": "ShiftLeft"
+    },
+    {
+      "name": "key_right_shift",
+      "glfw": 344,
+      "browser": "ShiftRight"
+    },
+    {
+      "name": "key_left_alt",
+      "glfw": 342,
+      "browser": "AltLeft"
+    },
+    {
+      "name": "key_right_alt",
+      "glfw": 346,
+      "browser": "AltRight"
+    }
+  ],
+  "modifiers": [
+    {
+      "name": "ctrl",
+      "keys": ["key_left_ctrl", "key_right_ctrl"]
+    },
+    {
+      "name": "shift",
+      "keys": ["key_left_shift", "key_right_shift"]
+    },
+    {
+      "name": "alt",
+      "keys": ["key_left_alt", "key_right_alt"]
+    }
+  ],
+  "_modifiers_note": [
+    "A modifier is either of its two keys: `ctrl` is down while the left Ctrl or the",
+    "right one is. A keyboard binding may name one on its own -- `ctrl`, a key like",
+    "any other -- or in front of a key, `shift+key_j`, which is J while Shift is",
+    "held. A key bound both ways answers the modified binding while its modifier is",
+    "down and the plain one otherwise, so J and Shift + J are two things and never",
+    "both. A mode switch names one as `with`, as a pad switch names `menu`.",
+    "",
+    "Alt costs a browser something: pressed and let go on its own, Windows moves",
+    "focus to the browser's menu, and the keys after it go there rather than to the",
+    "page, which has to `preventDefault` it. MuJoCo's viewer uses all three with the",
+    "mouse and does nothing with any of them alone."
+  ],
+  "_keys_note": [
+    "The numeric keypad, and letters as a task asks for them -- each one knowing",
+    "what it costs.",
+    "",
+    "The keypad is the set MuJoCo's viewer does not bind. Everything else on the",
+    "main keyboard is bound: `Simulate` handles its shortcuts in C++ and calls the",
+    "user callback **as well as**, never instead, so a letter fires both actions",
+    "and there is no way to intercept the second.",
+    "",
+    "MEASURED against this repository's mujoco, by reading `mjVISSTRING` and",
+    "`mjRNDSTRING` -- **all twenty-six letters are taken**, one render flag each:",
+    "",
+    "  A auto-connect  B perturb force  C contact point  D static body",
+    "  E equality      F contact force  G fog            H convex hull",
+    "  I inertia       J joint          K skybox         L additive",
+    "  M centre of mass  N island       O perturb object P contact split",
+    "  Q camera        R reflection     S shadow         T transparent",
+    "  U actuator      V tendon         W wireframe      X texture",
+    "  Y range finder  Z light          and ' , / ; \\\\ ` as well",
+    "",
+    "The letters here are the ones the tasks and the bundles bind. A key is bound",
+    "to what it does -- an axis of a command, a task's own control, a mode switch --",
+    "and never to a pad control: the keyboard is a path of its own beside the pad",
+    "(2026-09-29; until then it was a virtual pad read through the pad's mapping).",
+    "The jumper tasks: W A S D and the arrows walk, I K pitch, J L turn, H ; twist",
+    "(H left of J, ; right of L), U O roll, N M raise and lower, Esc lets go, and",
+    "in the claw modes Space closes the claw and Shift, Alt and Ctrl hold the arm",
+    "out. Q and O were the triggers and M the right stick's click until",
+    "2026-09-29; Shift + J L twisted and B let go until Control-agent 3.1 moved",
+    "them later that day, B to the right claw. Q is bound by nothing now.",
+    "So W also flips the scene to wireframe. That is accepted rather than unknown:",
+    "a keyboard laid out for the hands was worth more than a clean viewport, and",
+    "the flicker is visual only. A task that would rather not pay it binds the",
+    "keypad, which is still here and still free.",
+    "",
+    "V, B, Space, 1 2 3 4 and Ctrl with them, on either row, switch the jumper",
+    "bundle's modes, each as its manifest entry's `keys` says: Space the jump, V",
+    "and B the claws, 1 2 3 4 the gestures, Ctrl + 1 2 3 4 the dances, and Ctrl on",
+    "its own leaves a dance or a gesture. They cost the viewer something too --",
+    "Space pauses it, V and B are tendons and perturb force -- and `play --app`",
+    "hands them to its controller down and up (`rl/mjrl/app_play.py`). What the",
+    "viewer does with Esc was not measured here.",
+    "",
+    "The digits on the main row are the viewer's geom-group toggles, panels shown or",
+    "not. MEASURED (2026-09-28, keys sent to a viewer window, `opt.geomgroup` read",
+    "before and after): 1 to 4 each flip geom group 1 to 4 and the keypad's flip",
+    "nothing. On the jumper, whose appearance meshes are group 2 and collision",
+    "meshes group 1, 2 hides the robot the camera follows until pressed again and",
+    "1 draws its collision meshes over it. Accepted, as W's wireframe is; the",
+    "keypad digits are bound beside them and cost nothing.",
+    "",
+    "The arrows cost the viewer less: left and right step a paused scene.",
+    "",
+    "**MuJoCo's viewer reports a key's press and nothing else.** The callback is",
+    "handed a keycode and no action (`KeyCallbackType = Callable[[int], None]`), on",
+    "a press only: MuJoCo's GLFW adapter drops the auto-repeat and the release.",
+    "`mjrl.viewer.keys` puts a GLFW key callback of its own in front of the",
+    "viewer's and hands every reader both edges, so a key is held from its press to",
+    "its release, as in a browser, which reports both itself. Until 2026-09-29 the",
+    "release was inferred from repeats that never came, and every key let go 0.75 s",
+    "after its press.",
+    "",
+    "Browser codes carry over unchanged -- `KeyW` is `KeyW` whatever the viewer",
+    "does -- so a web consumer pays nothing for this at all."
+  ],
+  "gestures": [
+    {
+      "name": "rise",
+      "fires": "the tick it goes down, one-shot"
+    },
+    {
+      "name": "fall",
+      "fires": "the tick it comes back up, one-shot"
+    },
+    {
+      "name": "hold",
+      "fires": "every tick it is down -- a dead-man switch, not a mode"
+    },
+    {
+      "name": "toggle",
+      "fires": "down until pressed again -- the default for entering a mode"
+    },
+    {
+      "name": "single",
+      "fires": "one press and no second inside the click window; switches like `toggle`"
+    },
+    {
+      "name": "double",
+      "fires": "two presses, each inside the click window of the last; switches like `toggle`"
+    },
+    {
+      "name": "triple",
+      "fires": "three presses, each inside the click window of the last; switches like `toggle`"
+    },
+    {
+      "name": "quadruple",
+      "fires": "four presses, each inside the click window of the last; switches like `toggle`"
+    },
+    {
+      "name": "quintuple",
+      "fires": "five presses, each inside the click window of the last; switches like `toggle`"
+    }
+  ],
+  "_gestures_note": "A control may be bound more than once with different gestures: press to arm and release to go is one button, `rise` and `fall`, named twice. The five click gestures count presses of one control -- the same pad button or key, with the same modifier -- and a press counts when it comes within `click_window_ms` (`[fsm]` in the controller's config) of the one before. A count fires the binding for it the moment no longer count on that control is bound, and otherwise once the window has run out with no further press; so `single` fires at once where it is the only click on its control and waits out the window where a `double` shares it. A click switches a mode the way `toggle` does, and an `event` fires once. A control with a click gesture takes no `rise`, `fall`, `hold` or `toggle` -- every click would be one of those first. This note used to say there would be no double click, because counting needs a clock and a clock depends on how often a host ticks. The window is measured on the timestamps every host already hands the controller, not in ticks, so a host at 50 Hz and one at 1 kHz count the same presses the same way; the resolution is the host's rate, far inside any window a person can click to. No long press: nothing has asked for one.",
+  "absent": [
+    {
+      "name": "view",
+      "why": "The pad has this button and the service deliberately does not publish it. Binding it works on a bench through controller/xbox.py, which does report it, and does nothing at all on the robot."
+    }
+  ]
+}

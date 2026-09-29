@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trimmed from mbus/config/mbus_qos.xml to the profiles this FSM uses.
+     Copied verbatim, never retyped: QoS that does not match the other side
+     makes DDS silently never pair the reader and the writer. -->
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://www.omg.org/spec/DDS-XML"
+    xsi:schemaLocation="http://www.omg.org/spec/DDS-XML http://www.omg.org/spec/DDS-XML/20180501/dds-xml_qos_definitions.xsd">
+    <qos_library name="mbus">
+        <qos_profile name="common">
+            <!-- Domain -->
+            <domain_participant_qos>
+            </domain_participant_qos>
+            <!-- Publisher -->
+            <publisher_qos>
+                <presentation>
+                    <access_scope>INSTANCE_PRESENTATION_QOS</access_scope>
+                    <coherent_access>false</coherent_access>
+                    <ordered_access>true</ordered_access>
+                </presentation>
+            </publisher_qos>
+            <!-- Subscriber -->
+            <subscriber_qos>
+                <presentation>
+                    <access_scope>INSTANCE_PRESENTATION_QOS</access_scope>
+                    <coherent_access>false</coherent_access>
+                    <ordered_access>true</ordered_access>
+                </presentation>
+            </subscriber_qos>
+        </qos_profile>
+
+
+
+        <qos_profile name="MotorControl_Control">
+            <!-- Domain -->
+            <domain_participant_qos>
+            </domain_participant_qos>
+            <!-- Publisher -->
+            <publisher_qos>
+            </publisher_qos>
+            <!-- Subscriber -->
+            <subscriber_qos>
+            </subscriber_qos>
+            <!-- Topic -->
+            <topic_qos>
+                <durability>
+                    <kind>VOLATILE_DURABILITY_QOS</kind>
+                </durability>
+                <reliability>
+                    <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+                <transport_priority>
+                    <value>10</value>
+                </transport_priority>
+            </topic_qos>
+            <!-- DataWriter -->
+            <datawriter_qos>
+                <reliability>
+                    <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+            </datawriter_qos>
+            <!-- DataReader -->
+            <datareader_qos>
+                <reliability>
+                    <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+            </datareader_qos>
+        </qos_profile>
+
+        <qos_profile name="MotorControl_State">
+            <!-- Domain -->
+            <domain_participant_qos>
+            </domain_participant_qos>
+            <!-- Publisher -->
+            <publisher_qos>
+            </publisher_qos>
+            <!-- Subscriber -->
+            <subscriber_qos>
+            </subscriber_qos>
+            <!-- Topic -->
+            <topic_qos>
+                <durability>
+                    <kind>VOLATILE_DURABILITY_QOS</kind>
+                </durability>
+                <reliability>
+                    <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+                <transport_priority>
+                    <value>10</value>
+                </transport_priority>
+            </topic_qos>
+            <datawriter_qos>
+                <reliability>
+                    <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+            </datawriter_qos>
+            <datareader_qos>
+                <reliability>
+                    <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>1</depth>
+                </history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+            </datareader_qos>
+        </qos_profile>
+
+        <!-- 机器人控制指令 100Hz（control-agent-cpp -> motion-planner）。
+             通道里混着边沿触发的一次性事件（action.trigger 脉冲、jump 参数），
+             丢一帧 = 丢一次跳跃/攻击，所以弱网下要求逐帧可达：
+
+             - RELIABLE：丢包走 RTPS 重传补齐，而不是听天由命。
+             - KEEP_ALL（写端必需）：CycloneDDS 的 KEEP_LAST 写端在深度溢出时会把
+               **尚未被 ACK** 的样本直接从 WHC 里删掉（dds_whc.c whc_default_insert，
+               hdepth>0 时无条件 prune），depth=1 意味着重传窗口只有一帧 ——
+               弱网下 RELIABLE+KEEP_LAST(1) 实际退化成 BEST_EFFORT。只有 KEEP_ALL
+               才会把样本留到所有 reader 确认为止。
+             - KEEP_ALL（读端必需）：一次补包会把积压的多帧一起递上来，
+               KEEP_LAST(1) 的 RHC 会让旧帧被新帧覆盖，应用照样看不到那一帧。
+             - max_blocking_time=100ms：KEEP_ALL 写端在未确认积压超过 WhcHigh 时
+               会阻塞等重传追上（ddsi_transmit.c throttle_writer），超时则本帧被
+               直接丢弃并返回 TIMEOUT。Domain 2 的 NackDelay 已压到 10ms，一次
+               重传往返远小于 100ms，够补完；同时封顶在 10 个控制周期内，write()
+               超时由 wrapper 的 noexcept 路径转成错误码，不会把实时控制环无限拖住。
+             - 读端 max_samples=512：约 5s@100Hz 的补包缓冲；队列满时 RHC 拒收且
+               不 ACK，写端持续重传形成背压，而不是静默丢帧。
+               （写端不受 resource_limits 约束，其积压上限由
+               Internal/Watermarks/WhcHigh 决定，这里的数值仅作对齐说明。）
+
+             本 profile 只声明"要可达"，实际能不能补回来还依赖两件事：
+             1) 收发两端必须同时换上新 profile：旧的 BEST_EFFORT writer 遇上
+                RELIABLE reader 属于 QoS 不兼容，会直接匹配不上、一帧都收不到。
+             2) 该 topic 跑在 Domain 2（跨机弱网域），mbus_config.xml 的
+                Domain 2 已配套调整 AllowMulticast=spdp、HeartbeatInterval、
+                NackDelay 与 Watermarks —— 详见那边的注释。若换到别的 domain
+                运行，需要把同一套 Internal 参数带过去，否则 RELIABLE 名存实亡。 -->
+        <qos_profile name="RobotControl_Control">
+            <!-- Domain -->
+            <domain_participant_qos>
+            </domain_participant_qos>
+            <!-- Publisher -->
+            <publisher_qos>
+            </publisher_qos>
+            <!-- Subscriber -->
+            <subscriber_qos>
+            </subscriber_qos>
+            <!-- Topic -->
+            <topic_qos>
+                <durability>
+                    <kind>VOLATILE_DURABILITY_QOS</kind>
+                </durability>
+                <reliability>
+                    <kind>RELIABLE_RELIABILITY_QOS</kind>
+                    <max_blocking_time>
+                        <sec>0</sec>
+                        <nanosec>100000000</nanosec>
+                    </max_blocking_time>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_ALL_HISTORY_QOS</kind>
+                </history>
+                <resource_limits>
+                    <max_samples>512</max_samples>
+                    <max_instances>1</max_instances>
+                    <max_samples_per_instance>512</max_samples_per_instance>
+                </resource_limits>
+                <transport_priority>
+                    <value>10</value>
+                </transport_priority>
+            </topic_qos>
+            <datawriter_qos>
+                <durability>
+                    <kind>VOLATILE_DURABILITY_QOS</kind>
+                </durability>
+                <reliability>
+                    <kind>RELIABLE_RELIABILITY_QOS</kind>
+                    <max_blocking_time>
+                        <sec>0</sec>
+                        <nanosec>100000000</nanosec>
+                    </max_blocking_time>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_ALL_HISTORY_QOS</kind>
+                </history>
+                <resource_limits>
+                    <max_samples>512</max_samples>
+                    <max_instances>1</max_instances>
+                    <max_samples_per_instance>512</max_samples_per_instance>
+                </resource_limits>
+            </datawriter_qos>
+            <datareader_qos>
+                <durability>
+                    <kind>VOLATILE_DURABILITY_QOS</kind>
+                </durability>
+                <reliability>
+                    <kind>RELIABLE_RELIABILITY_QOS</kind>
+                    <max_blocking_time>
+                        <sec>0</sec>
+                        <nanosec>100000000</nanosec>
+                    </max_blocking_time>
+                </reliability>
+                <destination_order>
+                    <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+                </destination_order>
+                <history>
+                    <kind>KEEP_ALL_HISTORY_QOS</kind>
+                </history>
+                <resource_limits>
+                    <max_samples>512</max_samples>
+                    <max_instances>1</max_instances>
+                    <max_samples_per_instance>512</max_samples_per_instance>
+                </resource_limits>
+            </datareader_qos>
+        </qos_profile>
+
+
+
+        <qos_profile name="Imu_ImuOutput">
+            <domain_participant_qos></domain_participant_qos>
+            <publisher_qos></publisher_qos>
+            <subscriber_qos></subscriber_qos>
+            <topic_qos>
+                <durability><kind>VOLATILE_DURABILITY_QOS</kind></durability>
+                <reliability><kind>BEST_EFFORT_RELIABILITY_QOS</kind></reliability>
+                <history><kind>KEEP_LAST_HISTORY_QOS</kind><depth>1</depth></history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>10</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+            </topic_qos>
+            <datawriter_qos></datawriter_qos>
+            <datareader_qos></datareader_qos>
+        </qos_profile>
+
+
+
+        <!-- High-rate motion-planner debug stream: best-effort, volatile,
+             keep-last-1 so a slow subscriber never back-pressures the RT loop. -->
+
+        <!-- PhoneControl::Message (手机 App -> control-agent-cpp): 50Hz 控制指令 / ~1Hz 状态回传。
+             Best-effort, volatile, keep-last-1, 跟上 / 下的机器人控制走同样的 QoS 设定。 -->
+
+        <!-- Audio PCM stream: best-effort, volatile, keep-last-8 (~80 ms at
+             10 ms periods). Depth > 1 so a burst of periods is not collapsed
+             to a single sample (unlike video KEEP_LAST 1). -->
+            <!-- RobotControlRaw::ControlRaw (control-pod-svc): 50Hz Xbox-aligned snapshot.
+             Best-effort, volatile, keep-last-1 — same pattern as VR control frame. -->
+        <qos_profile name="RobotControlRaw_ControlRaw">
+            <domain_participant_qos></domain_participant_qos>
+            <publisher_qos></publisher_qos>
+            <subscriber_qos></subscriber_qos>
+            <topic_qos>
+                <durability><kind>VOLATILE_DURABILITY_QOS</kind></durability>
+                <reliability><kind>BEST_EFFORT_RELIABILITY_QOS</kind></reliability>
+                <history><kind>KEEP_LAST_HISTORY_QOS</kind><depth>1</depth></history>
+                <resource_limits>
+                    <max_samples>10</max_samples>
+                    <max_instances>1</max_instances>
+                    <max_samples_per_instance>10</max_samples_per_instance>
+                </resource_limits>
+                <transport_priority><value>10</value></transport_priority>
+            </topic_qos>
+            <datawriter_qos>
+                <reliability><kind>BEST_EFFORT_RELIABILITY_QOS</kind></reliability>
+            </datawriter_qos>
+            <datareader_qos>
+                <reliability><kind>BEST_EFFORT_RELIABILITY_QOS</kind></reliability>
+            </datareader_qos>
+        </qos_profile>
+
+    </qos_library>
+</dds>

@@ -1,0 +1,85 @@
+module Common
+{
+    // Topic类型
+    @extensibility(FINAL)
+    enum TopicType
+    {
+        @value(0)
+        ROBOT_CONTROL_CONTROL,
+        MOTOR_CONTROL_CONTROL,
+        MOTOR_CONTROL_STATE,
+        WEBRTC_SIGNALING_WEBRTC_SIGNAL,
+        FAULT_MSG_RAISE,
+        FAULT_MSG_RELEASE,
+        IMU_OUTPUT,
+        MOTION_PLANNER_DEBUG,
+        BMS_STATUS,
+        ROBOT_CONTROL_CONTROL_RAW
+    };
+    
+    // 姿态角
+    @extensibility(FINAL)@nested
+    struct AttitudeAngles
+    {
+        float roll;
+        float pitch;
+        float yaw;
+    };
+
+    // 速度
+    @extensibility(FINAL)@nested
+    struct Velocity3D
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    // 加速度
+    @extensibility(FINAL)@nested
+    struct Accelerometer3D
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    // 磁力计
+    @extensibility(FINAL)@nested
+    struct Magnetometer3D
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    // 四元数
+    @extensibility(FINAL)@nested
+    struct Quaternion
+    {
+        float w;
+        float x;
+        float y;
+        float z;
+    };
+
+    // 位置
+    @extensibility(FINAL)@nested
+    struct Position3D
+    {
+        float x;
+        float y;
+        float z;
+    };
+
+    // 模式
+    @extensibility(FINAL)
+    enum RobotMode
+    {
+        @value(0)
+        HEXAPOD,    // 六足
+        QUADRUPED,  // 四足
+        DANCE,      // 舞蹈
+        JUMP        // 跳跃
+    };
+};

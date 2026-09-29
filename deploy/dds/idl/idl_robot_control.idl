@@ -1,0 +1,99 @@
+# include "idl_common.idl"
+
+module RobotControl
+{
+    enum ActionId {
+        @value(0)
+        ACTION_NONE,
+        // 方向键（无臂激活时触发）
+        ACTION_UP,          // 方向键 ↑
+        ACTION_DOWN,        // 方向键 ↓
+        ACTION_LEFT,        // 方向键 ←
+        ACTION_RIGHT,       // 方向键 →
+        // 功能键 → 一次性触发（方向取触发帧 body.linear_velocity.x/y）
+        ACTION_X,           // Xbox X
+        ACTION_Y,           // Xbox Y
+        ACTION_B,           // Xbox B
+        ACTION_A,           // Xbox A 按下触发 / LT、RT 松手触发；参数取 jump.x/y/spin
+        // Menu 组合键
+        ACTION_MENU_UP,     // Menu + ↑
+        ACTION_MENU_DOWN,   // Menu + ↓
+        ACTION_MENU_LEFT,   // Menu + ←
+        ACTION_MENU_RIGHT,  // Menu + →
+        ACTION_MENU         // 单按 Menu
+    };
+
+    enum GripperPose {
+        @value(0)
+        POSE_NONE,               // 无预设（回位 / 交给 Rx 俯仰耦合）
+        POSE_EXTEND_UP,          // 前臂操作（方向键 ↑）
+        POSE_EXTEND_DOWN,        // 前臂操作（方向键 ↓）
+        POSE_EXTEND_LEFT,        // 前臂操作（方向键 ←）
+        POSE_EXTEND_RIGHT,       // 前臂操作（方向键 →）
+        POSE_EXTEND_UP_LEFT,     // 前臂操作（方向键 ↑+←）
+        POSE_EXTEND_UP_RIGHT,    // 前臂操作（方向键 ↑+→）
+        POSE_EXTEND_DOWN_LEFT,   // 前臂操作（方向键 ↓+←）
+        POSE_EXTEND_DOWN_RIGHT   // 前臂操作（方向键 ↓+→）
+    };
+
+    @extensibility(FINAL)@nested
+    struct BodyState
+    {
+        Common::AttitudeAngles attitude;      // roll / pitch / yaw；pitch=Rx（前后推）· yaw=扭身 twist（|Ry|≤半行程）
+        Common::Velocity3D linear_velocity;   // x=前后 vx / y=左右 vy / z=垂直 vz（VR 身高）
+        Common::Velocity3D angular_velocity;  // z = 转动 yaw_rate（Ry/左右推，|Ry|>半行程）；x/y 恒 0
+        float height;                         // 目标身高（agent 锁存，[-1,1]）
+    };
+
+    @extensibility(FINAL)@nested
+    struct GripperState
+    {
+        boolean is_valid;                // 该臂是否激活（Lb/Rb，二者互斥）
+        Common::Position3D position;     // 末端位置目标（VR / 预设位姿数值化）
+        Common::AttitudeAngles attitude; // 末端姿态目标（VR / 预设位姿数值化）
+        Common::Velocity3D linear_velocity; // 末端速度（兼容保留）
+        float opening;                   // 夹爪开合 [0,1]（激活臂的 LT/RT 扳机行程）
+        GripperPose pose;                // 离散预设姿态（方向键；未激活时 NONE）
+    };
+
+    // 跳跃参数（无触发字段，触发统一走 action 通道的 ACTION_A，边沿帧读取本参数）。
+    //   A      按下触发；方向/距离取 x/y（raw，不过死区/fast）。
+    //   LT/RT  松手检测触发，仅无臂激活时有效；按住时长累积转动幅度，
+    //          松手帧发 ACTION_A 并携带 spin。
+    @extensibility(FINAL)@nested
+    struct JumpCommand
+    {
+        float x;      // 起跳向量 前后 [-1,1]（raw 左摇杆纵轴，正=前，不过死区/fast）
+        float y;      // 起跳向量 左右 [-1,1]（raw 左摇杆横轴，正=右）
+                      //   方向 = atan2(y,x)；距离 = min(|(x,y)|,1)，0=原地跳
+        float spin;   // 旋转跳幅度 [-1,1]：负=左旋（LT）/正=右旋（RT），0=直线跳；由 LT/RT 按下时长映射
+    };
+
+    // 离散动作指令。trigger 触发脉冲（连发 3 帧）；脉冲期内新按键被忽略（不排队、不覆盖，
+    // A1 锁存）。ACTION_A 与其它 action_id 同为单次触发、共用同一通道，同一时刻只触发一种。
+    // action_id=ACTION_A 时参数取 Control.jump（x/y/spin）；ACTION_B / ACTION_Y 方向取边沿帧
+    // body.linear_velocity.x/y（|方向|≈0 → 默认朝机体前方）。
+    @extensibility(FINAL)@nested
+    struct ActionCommand
+    {
+        float trigger;      // 触发脉冲（连发 3 帧）：0=空闲，1=触发；下游上升沿只响应一次
+        ActionId action_id; // 动作编号
+    };
+
+    @extensibility(FINAL)
+    struct Control
+    {
+        uint64 timestamp_ns;
+        BodyState body;
+        GripperState left_gripper;
+        GripperState right_gripper;
+        JumpCommand jump;
+        ActionCommand action;
+    };
+
+    @extensibility(FINAL)
+    struct Debug
+    {
+        float time_stamp;
+    };
+};

@@ -1,0 +1,113 @@
+[project]
+name = "mjrl-lab"
+version = "0.0.1"
+description = "Dual-backend MuJoCo reinforcement learning framework: MuJoCo Warp on the GPU and native MuJoCo on multi-threaded CPU, sharing one set of managers and rsl_rl code"
+requires-python = ">=3.10,<3.14"
+
+# mjlab and rsl_rl are vendored copies under rl/ (see docs/VENDOR.md), so what
+# is listed here is their **transitive dependencies** rather than the two of
+# them. Do not pip install mjlab / rsl-rl-lib into the environment as well:
+# that creates a shadowing ambiguity with the in-repository copies.
+dependencies = [
+    # ── mjlab 1.6.0's dependencies ──
+    "mujoco~=3.11.0",
+    "mujoco-warp~=3.11.0",
+    "warp-lang>=1.14.0",
+    "torch>=2.7.0",
+    "torchrunx>=0.3.4",
+    "tyro>=1.0.1",
+    "trimesh>=4.8.3",
+    "scipy>=1.15",
+    "viser>=1.0.27",
+    "mjviser>=0.0.14",
+    "mediapy>=1.2.7",
+    "imageio-ffmpeg",
+    "prettytable",
+    "tqdm",
+    # The next two turned up during a clean macOS install on 2026-09-02 and had
+    # been missing all along -- the training machine happened to have wandb
+    # installed, so it never showed.
+    "wandb",   # imported at the top of mjlab/utils/wandb.py and
+               # tasks/manipulation/rl/runner.py, and `import mjlab.tasks`
+               # imports every task package in turn, so it always gets hit
+    "PyYAML",  # dump_yaml in mjlab/utils/os.py, which writes params/*.yaml at
+               # the start of training
+    # ── rsl_rl 5.4.2's dependencies ──
+    "torchvision>=0.5.0",
+    "tensordict>=0.7.0",
+    "tensorboard",
+    "GitPython",
+    "onnx",
+    "onnxscript>=0.5.4",
+    # Note: rsl_rl also has utils/neptune_log_writer.py, but that is an
+    # **optional** logger backend, imported only under --agent.logger neptune,
+    # so it is not a dependency.
+    # ── Common ──
+    "numpy",
+    # ── Deploy ──
+    # scripts/deploy.py holds every bundle it writes to deploy/app.schema.
+    "jsonschema",
+    # Runs the exported ONNX on this machine: export.py's numerical check of the
+    # graph against the checkpoint, the reference vectors every app carries
+    # (deploy.py refuses an app without them), and `play --app`'s policies. It
+    # was left out as something "a machine that only trains has no use for", and
+    # the result was a default build that stopped on a missing module.
+    "onnxruntime>=1.17",
+    # `play --app` reads the app's controller.toml, and `tomllib` arrived in
+    # Python 3.11; this is the same parser under its original name, for 3.10.
+    "tomli>=1.1; python_version < '3.11'",
+]
+
+[project.urls]
+Homepage = "https://github.com/KingKongRobotics/jumper"
+Repository = "https://github.com/KingKongRobotics/jumper"
+Issues = "https://github.com/KingKongRobotics/jumper/issues"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+# Two package roots: `rl/` holds every RL library (the framework itself, mjrl,
+# plus the vendored mjlab / rsl_rl) and the repository root holds tasks. `rl/`
+# itself has **no** __init__.py, so all three below remain top-level packages:
+# `import mjrl` / `import mjlab` are written the same way and upstream code
+# needs no change at all.
+#
+# Note: with those packages moved out of the repository root, `pip install -e .`
+# is no longer optional -- it is the only way imports resolve (the old layout
+# relied on the repository root being on sys.path by default).
+[tool.setuptools.packages.find]
+where = [".", "rl"]
+include = ["tasks*", "scenes*", "controller*", "mjrl*", "mjlab*", "rsl_rl*"]
+
+# Scene images live inside the `scenes` package, beside the code that describes
+# them. setuptools collects only .py by default, so a built wheel would have the
+# scene modules and none of their textures -- and the failure would be a missing
+# file at scene-load time, long after the build looked fine. Editable installs
+# never hit it, which is exactly what makes it easy to ship.
+[tool.setuptools.package-data]
+scenes = ["assets/*/*.png"]
+# Same reasoning for a task's own material: jumper.jump's reference motion lives
+# inside the package, beside the code that loads it, so it needs saying here too.
+tasks = ["jumper/jump/ref/*.npz"]
+# The gamepad dictionary is data, read at run time by `controller.vocabulary`
+# and at compile time by `deploy/fsm`. Same reason as the scene textures: a
+# wheel with the module and not the file fails on first use, not on build.
+controller = ["vocabulary.json"]
+
+[tool.ruff]
+line-length = 100
+# Exclude the vendored copies only (they stay word-for-word with upstream to
+# keep rebases workable).
+# Note it must not be written as exclude = ["rl"] -- that would exclude our own
+# rl/mjrl along with them.
+exclude = ["rl/mjlab", "rl/rsl_rl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The vendored copies' own tests are not this repository's responsibility;
+# keep pytest from recursing into them.
+norecursedirs = ["rl", "assets", "docs"]
