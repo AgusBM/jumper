@@ -2,7 +2,7 @@
 
 # Jumper
 
-[English](README.md) · [中文](README.zh.md)
+**English** | [简体中文](README.zh.md)
 
 Design appearances. Train motions. Create worlds for **Jumper**, a 22-DoF hexapod.
 
@@ -59,4 +59,11 @@ and [MuJoCo Warp](https://github.com/google-deepmind/mujoco_warp).
 Example appearance and scene images come from jumper-design; [image sources](docs/media/DESIGN_SOURCES.md)
 and [third-party notices](NOTICE) record attribution.
 
-[中文](README.zh.md) · [License](LICENSE)
+## License
+
+Copyright 2026 KingKong Robotics.
+
+Maintainer-owned project materials are licensed under Apache-2.0. See [LICENSE](LICENSE),
+[NOTICE](NOTICE), and [licensing details](docs/PROJECT_GUIDE.md#license).
+Third-party materials remain under their respective terms, and generated outputs do not
+automatically inherit this repository's license.

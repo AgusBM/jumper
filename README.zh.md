@@ -1,10 +1,10 @@
-<!-- tracks: README.md @ sha256:60e60a3d9b407643 -->
+<!-- tracks: README.md @ sha256:bda46ebb7ed5c21e -->
 
 ![Jumper 插图](docs/media/jumper-hero.png)
 
 # Jumper
 
-[English](README.md) · [中文](README.zh.md)
+[English](README.md) | **简体中文**
 
 为 **Jumper** —— 一台 22 自由度六足机器人 —— 设计外观、训练动作、创造场景。
 
@@ -61,4 +61,9 @@
 外观与场景示例图片来自 jumper-design，出处见[图片来源](docs/media/DESIGN_SOURCES.md)，
 第三方材料归属见 [NOTICE](NOTICE)。
 
-[English](README.md) · [许可证](LICENSE)
+## 许可证
+
+Copyright 2026 KingKong Robotics.
+
+维护者拥有权利的项目内容采用 Apache-2.0。详见 [LICENSE](LICENSE)、[NOTICE](NOTICE)
+和[许可说明](docs/PROJECT_GUIDE.zh.md#许可证)。第三方内容保留其各自的许可条款；使用本工具生成的文件不会自动继承本仓库许可证。
