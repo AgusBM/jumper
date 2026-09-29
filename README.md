@@ -4,7 +4,7 @@
 
 [English](README.md) · [中文](README.zh.md)
 
-Design appearances. Create worlds. Train motions for **Jumper**, a 22-DoF hexapod.
+Design appearances. Train motions. Create worlds for **Jumper**, a 22-DoF hexapod.
 
 Open this repository in an AI coding assistant and describe what you want in one sentence.
 The linked projects and guides below give your assistant the workflows to follow.
@@ -20,17 +20,6 @@ The linked projects and guides below give your assistant the workflows to follow
 
 [Browse all skins](https://github.com/KingKongRobotics/jumper-design/tree/main/library/skins)
 
-## One sentence to create a scene
-
-> Create a park pump-track scene for Jumper with rolling terrain, trees and benches, then export a `.map`.
-
-| | | |
-|:-:|:-:|:-:|
-| ![Park pump track scene](docs/media/design-park.png) | ![Bedroom scene](docs/media/design-bedroom.png) | ![Soccer scene](docs/media/design-soccer.png) |
-| [**Park pump track**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/park-pump-track.map) | [**Bedroom**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/bedroom.map) | [**Soccer**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/soccer.map) |
-
-[Browse all maps](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
-
 ## One sentence to train a motion
 
 > Train a stable tripod gait for Jumper, replay and evaluate the result, then package it as an `.app`.
@@ -41,6 +30,17 @@ The linked projects and guides below give your assistant the workflows to follow
 | **Walk** | **Posture** | **Jump** |
 | ![Jumper walking with one arm free](docs/media/claw.gif) | ![Jumper dancing](docs/media/dance.gif) | ![Jumper waving](docs/media/gesture.gif) |
 | **Grasp** | **Dance** | **Gesture** |
+
+## One sentence to create a scene
+
+> Create a park pump-track scene for Jumper with rolling terrain, trees and benches, then export a `.map`.
+
+| | | |
+|:-:|:-:|:-:|
+| ![Park pump track scene](docs/media/design-park.png) | ![Bedroom scene](docs/media/design-bedroom.png) | ![Soccer scene](docs/media/design-soccer.png) |
+| [**Park pump track**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/park-pump-track.map) | [**Bedroom**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/bedroom.map) | [**Soccer**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/soccer.map) |
+
+[Browse all maps](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
 
 The images are existing appearance and scene examples; the motion clips show trained policies running in simulation.
 
