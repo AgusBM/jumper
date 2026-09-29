@@ -1,6 +1,6 @@
-<!-- tracks: README.md @ sha256:bda46ebb7ed5c21e -->
+<!-- tracks: README.md @ sha256:8c6c4483f1a9e4ff -->
 
-![Jumper 插图](docs/media/jumper-hero.png)
+![跳跳](docs/media/jumper-hero-zh.png)
 
 # Jumper
 

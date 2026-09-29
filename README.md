@@ -1,4 +1,4 @@
-![Jumper illustration](docs/media/jumper-hero.png)
+![Jumper](docs/media/jumper-hero-en.png)
 
 # Jumper
 
