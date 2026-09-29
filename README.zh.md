@@ -2,18 +2,18 @@
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
-# Jumper
+# 跳跳
 
 [English](README.md) | **简体中文**
 
-为 **Jumper** —— 一台 22 自由度六足机器人 —— 设计外观、训练动作、创造场景。
+为 **跳跳** —— 一台 22 自由度六足机器人 —— 设计外观、训练动作、创造场景。
 
 在 AI 编程助手中打开这个仓库，用一句话描述你的想法，开始创作。
 文末列出了相关项目和指南，AI 可以按需读取并使用。
 
 ## 一句话，设计外观
 
-> 为 Jumper 设计一个暖沙色游侠外观，统一身体和四肢配色，并导出 `.skin`。
+> 为跳跳设计一个暖沙色游侠外观，统一身体和四肢配色，并导出 `.skin`。
 
 | | | |
 |:-:|:-:|:-:|
@@ -24,18 +24,18 @@
 
 ## 一句话，训练动作
 
-> 为 Jumper 训练稳定的三足步态，回放并评估效果，然后打包生成 `.app` 动作包。
+> 为跳跳训练稳定的三足步态，回放并评估效果，然后打包生成 `.app` 动作包。
 
 | | | |
 |:-:|:-:|:-:|
-| ![Jumper 行走](docs/media/walk.gif) | ![Jumper 改变姿态](docs/media/posture.gif) | ![Jumper 跳跃](docs/media/jump.gif) |
+| ![跳跳行走](docs/media/walk.gif) | ![跳跳改变姿态](docs/media/posture.gif) | ![跳跳跳跃](docs/media/jump.gif) |
 | **行走** | **姿态** | **跳跃** |
-| ![Jumper 腾出一条手臂行走](docs/media/claw.gif) | ![Jumper 跳舞](docs/media/dance.gif) | ![Jumper 挥手](docs/media/gesture.gif) |
+| ![跳跳腾出一条手臂行走](docs/media/claw.gif) | ![跳跳跳舞](docs/media/dance.gif) | ![跳跳挥手](docs/media/gesture.gif) |
 | **抓取** | **舞蹈** | **手势** |
 
 ## 一句话，生成场景
 
-> 为 Jumper 生成一个有起伏地形、树木和长椅的公园泵道场景，并导出 `.map`。
+> 为跳跳生成一个有起伏地形、树木和长椅的公园泵道场景，并导出 `.map`。
 
 | | | |
 |:-:|:-:|:-:|
