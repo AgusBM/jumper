@@ -46,7 +46,7 @@ The images are existing appearance and scene examples; the motion clips show tra
 
 ## Where to find things
 
-| | |
+| Resource | Purpose |
 |---|---|
 | [jumper-design](https://github.com/KingKongRobotics/jumper-design) | Appearance and scene creation; your assistant reads its [instructions](https://github.com/KingKongRobotics/jumper-design/blob/main/AGENTS.md) and uses its tools as needed. |
 | [Training tutorial](docs/TUTORIAL.md) | Motion training, replay and policy export in this repository. |

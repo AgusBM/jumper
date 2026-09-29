@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:38c1ac26fbef3015 -->
+<!-- tracks: README.md @ sha256:c0648f8a850aa880 -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -48,7 +48,7 @@
 
 ## 相关项目与指南
 
-| | |
+| 资源 | 用途 |
 |---|---|
 | [jumper-design](https://github.com/KingKongRobotics/jumper-design) | 外观与场景生成；AI 读取其[工作说明](https://github.com/KingKongRobotics/jumper-design/blob/main/AGENTS.md)，按需使用工具。 |
 | [训练教程](docs/TUTORIAL.zh.md) | 本仓库中的动作训练、回放与策略导出。 |
