@@ -4,7 +4,7 @@
 
 **English** | [简体中文](README.zh.md)
 
-Design appearances. Train motions. Create worlds for **Jumper**, a 22-DoF hexapod.
+Design appearances. Train motions. Create worlds for **Jumper**, a 22-DoF crab robot.
 
 Open this repository in an AI coding assistant and describe what you want in one sentence.
 The linked projects and guides below give your assistant the workflows to follow.
