@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:3e15815378c970f5 -->
+<!-- tracks: README.md @ sha256:d6e03a19753276f6 -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -43,8 +43,6 @@
 | [**公园泵道**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/park-pump-track.map) | [**卧室**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/bedroom.map) | [**足球**](https://github.com/KingKongRobotics/jumper-design/blob/be74e0f2e5e2433d24a3a7b1c1aa0dbeae480356/library/maps/soccer.map) |
 
 [浏览全部场景](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
-
-图片是现有的外观和场景示例；动作片段包含仿真示例与官网展示，出处见[动作素材来源](docs/media/MOTION_SOURCES.md)。
 
 ## 相关项目与指南
 

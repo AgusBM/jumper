@@ -42,9 +42,6 @@ The linked projects and guides below give your assistant the workflows to follow
 
 [Browse all maps](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
 
-The images are existing appearance and scene examples; motion clips combine simulation examples
-and website showcases. See [motion media sources](docs/media/MOTION_SOURCES.md).
-
 ## Where to find things
 
 | Resource | Purpose |
