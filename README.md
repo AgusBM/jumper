@@ -26,10 +26,13 @@ The linked projects and guides below give your assistant the workflows to follow
 
 | | | |
 |:-:|:-:|:-:|
-| ![Jumper walking](docs/media/walk.gif) | ![Jumper changing posture](docs/media/posture.gif) | ![Jumper jumping](docs/media/jump.gif) |
-| **Walk** | **Posture** | **Jump** |
-| ![Jumper walking with one arm free](docs/media/claw.gif) | ![Jumper dancing](docs/media/dance.gif) | ![Jumper waving](docs/media/gesture.gif) |
-| **Grasp** | **Dance** | **Gesture** |
+| ![Jumper walking](docs/media/walk.gif) | ![Jumper changing posture](docs/media/posture.gif) | ![Jumper waving](docs/media/gesture.gif) |
+| **Walk** | **Posture** | **Gesture** |
+| ![Dance simulation](docs/media/dance.gif)<br>![Dance website showcase](docs/media/official-dance.gif) | ![Jump simulation](docs/media/jump.gif)<br>![Jump website showcase](docs/media/official-jump.gif) | ![Grasp simulation](docs/media/claw.gif)<br>![Grasp website showcase](docs/media/official-grasp.gif) |
+| **Dance** | **Jump** | **Grasp** |
+
+Each paired example shows simulation above and the [official website showcase](https://kingkong.tech/jumper)
+below. They illustrate the same motion category, not a verified transfer of the same policy.
 
 ## One sentence to create a scene
 
@@ -42,7 +45,8 @@ The linked projects and guides below give your assistant the workflows to follow
 
 [Browse all maps](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
 
-The images are existing appearance and scene examples; the motion clips show trained policies running in simulation.
+The images are existing appearance and scene examples; motion clips combine simulation examples
+and website showcases. See [motion media sources](docs/media/MOTION_SOURCES.md).
 
 ## Where to find things
 

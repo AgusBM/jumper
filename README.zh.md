@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:c0648f8a850aa880 -->
+<!-- tracks: README.md @ sha256:dbf9aa6ec0e9546d -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -28,10 +28,12 @@
 
 | | | |
 |:-:|:-:|:-:|
-| ![跳跳行走](docs/media/walk.gif) | ![跳跳改变姿态](docs/media/posture.gif) | ![跳跳跳跃](docs/media/jump.gif) |
-| **行走** | **姿态** | **跳跃** |
-| ![跳跳腾出一条手臂行走](docs/media/claw.gif) | ![跳跳跳舞](docs/media/dance.gif) | ![跳跳挥手](docs/media/gesture.gif) |
-| **抓取** | **舞蹈** | **手势** |
+| ![跳跳行走](docs/media/walk.gif) | ![跳跳改变姿态](docs/media/posture.gif) | ![跳跳挥手](docs/media/gesture.gif) |
+| **行走** | **姿态** | **手势** |
+| ![舞蹈仿真](docs/media/dance.gif)<br>![舞蹈官网展示](docs/media/official-dance.gif) | ![跳跃仿真](docs/media/jump.gif)<br>![跳跃官网展示](docs/media/official-jump.gif) | ![抓取仿真](docs/media/claw.gif)<br>![抓取官网展示](docs/media/official-grasp.gif) |
+| **舞蹈** | **跳跃** | **抓取** |
+
+每组配对动图上方为仿真，下方为[官网展示](https://kingkong.tech/jumper)。两者展示同类动作，不代表同一策略已通过实机迁移验证。
 
 ## 一句话，生成场景
 
@@ -44,7 +46,7 @@
 
 [浏览全部场景](https://github.com/KingKongRobotics/jumper-design/tree/main/library/maps)
 
-图片是现有的外观和场景示例；动作片段展示了在仿真中运行的训练策略。
+图片是现有的外观和场景示例；动作片段包含仿真示例与官网展示，出处见[动作素材来源](docs/media/MOTION_SOURCES.md)。
 
 ## 相关项目与指南
 
