@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:d6e03a19753276f6 -->
+<!-- tracks: README.md @ sha256:7d9922d710c82beb -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -7,6 +7,8 @@
 [English](README.md) | **简体中文**
 
 为 **跳跳** —— 一台 22 自由度螃蟹机器人 —— 设计外观、训练动作、创造场景。
+
+> 🦀 **免费获得跳跳！** [了解如何领取 →](https://beunlimited.me/zh/events/crab-robot-challenge-2026)
 
 在 AI 编程助手中打开这个仓库，用一句话描述你的想法，开始创作。
 文末列出了相关项目和指南，AI 可以按需读取并使用。
