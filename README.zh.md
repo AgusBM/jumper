@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:dbf9aa6ec0e9546d -->
+<!-- tracks: README.md @ sha256:3e15815378c970f5 -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -32,8 +32,6 @@
 | **行走** | **姿态** | **手势** |
 | ![舞蹈仿真](docs/media/dance.gif)<br>![舞蹈官网展示](docs/media/official-dance.gif) | ![跳跃仿真](docs/media/jump.gif)<br>![跳跃官网展示](docs/media/official-jump.gif) | ![抓取仿真](docs/media/claw.gif)<br>![抓取官网展示](docs/media/official-grasp.gif) |
 | **舞蹈** | **跳跃** | **抓取** |
-
-每组配对动图上方为仿真，下方为[官网展示](https://kingkong.tech/jumper)。两者展示同类动作，不代表同一策略已通过实机迁移验证。
 
 ## 一句话，生成场景
 

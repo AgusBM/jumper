@@ -31,9 +31,6 @@ The linked projects and guides below give your assistant the workflows to follow
 | ![Dance simulation](docs/media/dance.gif)<br>![Dance website showcase](docs/media/official-dance.gif) | ![Jump simulation](docs/media/jump.gif)<br>![Jump website showcase](docs/media/official-jump.gif) | ![Grasp simulation](docs/media/claw.gif)<br>![Grasp website showcase](docs/media/official-grasp.gif) |
 | **Dance** | **Jump** | **Grasp** |
 
-Each paired example shows simulation above and the [official website showcase](https://kingkong.tech/jumper)
-below. They illustrate the same motion category, not a verified transfer of the same policy.
-
 ## One sentence to create a scene
 
 > Create a park pump-track scene for Jumper with rolling terrain, trees and benches, then export a `.map`.
