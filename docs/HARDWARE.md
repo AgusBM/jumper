@@ -4,10 +4,6 @@
 
 [Meet Jumper](https://kingkong.tech/jumper) · [Back to the project](../README.md)
 
-Published specifications, confirmed by the maintainer on September 30, 2026.
-Engineering-prototype weight is listed separately. Check the hardware revision of your
-unit before selecting replacement parts; this specification sheet is not a manufacturing BOM.
-
 | Category | Item | Specification |
 |---|---|---|
 | Body | Dimensions | 400 × 400 × 200 mm |
@@ -32,4 +28,3 @@ unit before selecting replacement parts; this specification sheet is not a manuf
 | Power | Battery | Removable Li-ion battery; 25.2 V, 3000 mAh |
 | Power | Charging | USB Type-C, USB PD 3.1; supports up to 140 W charging power with a compatible PD 3.1 charger and cable |
 | Environment | Intended use | Indoor use only |
-
