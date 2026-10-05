@@ -4,6 +4,8 @@
 
 **English** | [简体中文](README.zh.md)
 
+Jumper is an open platform for creating little robots with AI.
+
 Design appearances. Train motions. Create worlds for **Jumper**, a 22-DoF crab robot. [View hardware →](docs/HARDWARE.md)
 
 Open this repository in an AI coding assistant and describe what you want in one sentence.
