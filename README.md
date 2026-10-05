@@ -8,9 +8,7 @@ Jumper is an open platform for creating little robots with AI.
 
 Design appearances. Train motions. Create worlds for **Jumper**, a 22-DoF crab robot. [View hardware →](docs/HARDWARE.md)
 
-**This repo is Jumper’s AI toolkit for appearance, motion, and scene creation.**
-
-Open this repo in an AI coding assistant and try the prompts below.
+**This repo is Jumper’s AI toolkit for appearance, motion, and scene creation.** Open this repo in an AI coding assistant and try the prompts below.
 
 > 🦀 **Get a free Jumper!** [Find out how →](https://beunlimited.me/zh/events/crab-robot-challenge-2026)
 
