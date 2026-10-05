@@ -1,12 +1,10 @@
-<!-- tracks: README.md @ sha256:2a57a8d6813d0889 -->
+<!-- tracks: README.md @ sha256:a848eca3625be561 -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
 # 跳跳
 
 [English](README.md) | **简体中文**
-
-跳跳是一个用 AI 创造小机器人的开放平台。
 
 为**跳跳**，一台 22 自由度螃蟹机器人，设计外观、训练动作、创造场景。[查看硬件 →](docs/HARDWARE.zh.md)
 
