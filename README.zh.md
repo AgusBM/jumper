@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:0db4d081ff7ac9f3 -->
+<!-- tracks: README.md @ sha256:2f51540bc342a691 -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -8,7 +8,7 @@
 
 **跳跳是一台 22 自由度螃蟹机器人。** [查看硬件 →](docs/HARDWARE.zh.md)
 
-**本仓库是跳跳的外观、动作与场景创作 AI 工具集。** 在 AI 编程助手中打开本仓库，试试下面的提示词。
+本仓库是跳跳的外观、动作与场景创作 AI 工具集。在 AI 编程助手中打开本仓库，试试下面的提示词。
 
 > 🦀 **免费获得跳跳！** [了解如何领取 →](https://beunlimited.me/zh/events/crab-robot-challenge-2026)
 
