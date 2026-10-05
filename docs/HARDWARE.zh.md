@@ -1,4 +1,4 @@
-<!-- tracks: HARDWARE.md @ sha256:ede7b2f6feb23002 -->
+<!-- tracks: HARDWARE.md @ sha256:660db68551bb6f7a -->
 
 # 跳跳硬件规格
 
@@ -11,17 +11,17 @@
 | 整机 | 尺寸 | 400 × 400 × 200 mm |
 | 整机 | 重量 | 1.8 kg（工程样机 2.8 kg） |
 | 整机 | 最大抓取重量 | 1 kg |
-| 运动 | 关节 | 22 个[触觉舵机](https://kingkong.tech/servo) |
-| 计算 | 主控 SoC | 瑞芯微 RK3576 |
+| 计算 | 主控 SoC | [瑞芯微 RK3576](https://www.rock-chips.com/a/en/products/RK35_Series/2024/1212/2033.html) |
 | 计算 | CPU | 8 核：4 × Cortex-A72 @ 2.2 GHz + 4 × Cortex-A53 @ 2.0 GHz |
 | 计算 | NPU | 6 TOPS（INT8） |
 | 计算 | 内存 | 4 GB |
 | 计算 | 存储 | 64 GB |
+| 运动 | 关节 | 22 个[触觉舵机](https://kingkong.tech/servo) |
 | 感知 | IMU | 6 轴：3 轴加速度计 + 3 轴陀螺仪 |
-| 感知 | 深度传感器 | dToF，54 × 42 阵列，每帧 2,268 个测距点 |
+| 感知 | 深度传感器 | dToF，54 × 42 阵列，每帧 2,268 个测距点；配置参考型号：[ST VL53L9CX](https://www.st.com/en/imaging-and-photonics-solutions/vl53l9cx.html) |
 | 感知 | 深度视场角 | 水平 55° × 垂直 42°；对角 71° |
 | 感知 | 深度量程 | 5 cm–8.8 m（室内） |
-| 感知 | 摄像头 | 500 万像素，2592 × 1944；对角视场角 162.2° |
+| 感知 | 摄像头 | 500 万像素，2592 × 1944；对角视场角 162.2°；配置参考型号：[OMNIVISION OV16880](https://www.ovt.com/press-releases/omnivision-announces-ov16880-industrys-first-16-megapixel-sensor-built-on-1-micron-pixels/) |
 | 交互 | 表情显示屏 | 2 块 0.9 英寸圆形 TFT 彩屏 |
 | 交互 | 扬声器 | 2 个 |
 | 交互 | 麦克风 | 4 个数字 MEMS 麦克风 |
