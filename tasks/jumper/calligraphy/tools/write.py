@@ -31,7 +31,8 @@ writes, and solving against the measured pose is what keeps that out of the ink.
 `logs/calligraphy/<u65e0>/<time>/`: `stretches.json` (the cut, as written --
 replanned stretches included), `log.npz` (one row per control step: phase, stroke,
 target and measured tip, the brush's contact and force, the trunk's pose, the IK
-residual, the command; and the full `qpos`, to replay into a renderer) and
+residual, the command; and the full `qpos`), `model.mjb` (the compiled model that
+`qpos` belongs to, for `render.py`) and
 `topview.png`, the plan beside where the brush actually touched the floor.
 
 The policy runs on `native:cpu` by default -- one environment, so a GPU buys
@@ -502,6 +503,12 @@ def main() -> int:
     log = np.asarray(rows, dtype=np.float64)
     np.savez(out / "log.npz", log=log, columns=np.array(cols), phases=np.array(PHASES),
              qpos=np.asarray(qpos_rows), dt=dt)
+    # The compiled model the log's qpos belongs to: `render.py` replays it in plain
+    # MuJoCo, without mjlab or torch (OSMesa, the CPU renderer, crashes the process
+    # when torch is loaded beside it).
+    import mujoco
+
+    mujoco.mj_saveModel(env.sim.mj_model, str(out / "model.mjb"))
     _report(log, cols)
     _topview(out, plan, cut, log, rm, cols)
     print(f"[write] wrote {out}")

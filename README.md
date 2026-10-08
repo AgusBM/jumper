@@ -10,6 +10,32 @@ This repo is Jumper’s AI toolkit for appearance, motion, and scene creation. O
 
 > 🦀 **Get a free Jumper!** [Find out how →](https://beunlimited.me/zh/events/crab-robot-challenge-2026)
 
+## This fork: Jumper writes calligraphy · 地书
+
+![Jumper writing 无 on the floor with a brush, seen from above](docs/media/calligraphy-wu.gif)
+
+In Chinese parks people write characters on the paving stones with a long brush
+dipped in water — 地书, "ground calligraphy" — and the characters dry and vanish.
+This fork teaches Jumper to do the same, in simulation: it holds a brush in its
+claw and writes **无** (*wú*, "nothing"), stroke by stroke, in stroke order.
+
+- **The strokes** come from [Make Me a Hanzi](https://github.com/skishore/makemeahanzi):
+  each stroke's median line, smoothed and scaled onto the floor, with a press
+  profile — pressed in at the start, lifted towards the end.
+- **The walking** is Jumper's own trained five-legged gait (`jumper.five_foot`),
+  unchanged. The sixth leg is the arm that writes, moved by inverse kinematics
+  against where the body really is.
+- **The arm reaches a curved band about 6 cm deep in front of the robot**, and the
+  character is 30 cm across. So the robot cuts each stroke into stretches it can
+  reach, walks between them with the arm folded (it cannot walk with it out),
+  and holds the brush on the stone at about 1 N.
+- **Measured:** the brush tip stays 1.1–1.2 mm from the stroke (median), touches
+  the floor nowhere else, and the whole character takes 86–103 s of simulated time.
+
+Everything — the planner, the controller, the renders and the stroke data for
+painting the ink in post-production — is in
+[`tasks/jumper/calligraphy/`](tasks/jumper/calligraphy/README.md).
+
 ## One sentence to design an appearance
 
 > Design a warm sand ranger appearance for Jumper with coordinated body and limb colors, then export a `.skin`.

@@ -8,9 +8,21 @@ where the next stroke can be reached, putting the brush down, writing, lifting i
 python tasks/jumper/calligraphy/tools/strokes.py                # step 1: 无 -> plan.json + plan.svg
 python tasks/jumper/calligraphy/tools/write.py --plan-only      # the cut into stretches, drawn
 python tasks/jumper/calligraphy/tools/write.py                  # step 2: write it, ~5 min on CPU
+MUJOCO_GL=osmesa python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u65e0/<run>
+                                                                # step 4: two shots, gif, ink export
 ```
 
-Outputs go to `logs/calligraphy/u65e0/` (the character's code point).
+Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
+
+| file | step | what it is |
+|---|---|---|
+| `plan.json`, `stretches.json` | 1, 2 | the strokes on the floor, and how they were cut and written |
+| `log.npz` | 3 | one row per 20 ms control step -- phase, stroke, target and measured tip, contact and force, trunk pose, command -- and the full `qpos` |
+| `model.mjb` | 3 | the compiled model that `qpos` belongs to |
+| `topview.png` | 2 | the plan beside where the brush touched the floor |
+| `top.mp4`, `low.mp4` | 4 | overhead and low shots, real time, 960x720 at 30 fps, ink drawn as it is laid (`--no-ink`: clean plates) |
+| `wu.gif` | 4 | the overhead shot at 6x, 480x360, for the README |
+| `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
 
 **This is not a task.** Nothing is trained: `jumper.five_foot`'s shipped policy
 (`tasks/jumper/five_foot/out/example/model_86600.pt`) walks and stands on five legs,
@@ -29,6 +41,9 @@ is no `env_cfg.py` or `rl_cfg.py`, so the registry does not see the directory.
 | `stations.py` | cuts each stroke into stretches the arm can write from one place, and where to stand for each |
 | `tools/strokes.py` | step 1 |
 | `tools/write.py` | step 2: the controller, the log and a top view |
+| `ink.py` | step 3: which logged steps are ink, grouped into marks, with a width |
+| `cameras.py` | the two shots, one definition for the renderer and the ink's pixels |
+| `tools/render.py` | step 4: replays the log in plain MuJoCo and renders it |
 
 ## Frame
 
@@ -64,17 +79,47 @@ third of the steps).
 the long middle stroke turned the trunk 48 deg while the brush bounced. The press
 is held at `press * 1.0 N` by an integrator on the tip's height instead.
 
-**Result, 无 at 0.30 m** (`tools/write.py`, defaults): 86 s simulated, 7 stretches
-(one replanned after the trunk stopped 1.2 cm off its station). While writing, the
-tip is 1.1 mm from the stroke (median; p95 2.9 mm, max 5.8 mm), on the floor 96% of
-the time at 1.13 N (median), and it touches the floor nowhere else.
+**Result, 无 at 0.30 m** (`tools/write.py`, defaults). The robot starts each run
+from a randomised pose, so runs differ; two of them:
+
+| | simulated | stretches | tip to stroke, median / p95 / max | brush down while writing | force, median |
+|---|---|---|---|---|---|
+| run 6 | 86 s | 7 | 1.1 / 2.9 / 5.8 mm | 96% | 1.13 N |
+| run 7 (the README's gif) | 103 s | 8 | 1.2 / 6.4 / 17.4 mm | 90% | 1.20 N |
+
+In both the brush touched the floor nowhere outside the strokes. Each extra
+stretch is a replan: the trunk stopped too far from its station (run 7: three
+times) or drifted out of reach while writing (once).
+
+## The ink, for post-production
+
+`ink.json` holds every **mark** -- one continuous trace of the brush -- with, per
+point: the time it was laid, its floor xy, the normal force, the planned press and
+a suggested width; and its **pixel position in each shot**, with each shot's
+intrinsics and pose. So a compositor can lay the ink down frame by frame on the
+clean plates (`render.py --no-ink`) without knowing anything about the simulation.
+
+- A contact counts as ink only while the arm is lowering, writing or lifting.
+  Gaps of up to 0.1 s inside a stretch are bridged -- the simulated tip is a rigid
+  ball that skips where wet hair would not -- which takes 无 from 71 marks to 10.
+- The width is derived, not measured: `0.065 * size * clip(force / 1 N, 0.25, 1.3)`.
+  The raw force and press are there for any other rule.
+- The pixels are checked against the renderer (`render.py --check`: markers at
+  known floor points): <= 0.5 px overhead, 1.4-2.1 px in the low shot.
+
+The renderer is plain MuJoCo on the run's `model.mjb` and `qpos` -- no mjlab, no
+torch -- because OSMesa, the CPU renderer this needs without a GPU, crashes the
+process when torch is loaded beside it. It repaints the training floor as paving
+stones, draws the ink as flat wet patches and lights the scene with a low sun
+(the scene's spot light leaves its shadow map's edge on the far floor). It is
+slow on a CPU: run 7 (103 s) took 78 min on this 4-core container for both shots
+and the gif -- 6614 frames, ~0.7 s each, OSMesa on all four cores.
+
+`docs/media/calligraphy-wu.gif` in the repository's README is `wu.gif` of the run
+the README quotes.
 
 ## Not done yet
 
-- Step 3's log exists (`log.npz`, one row per 20 ms control step) but is not yet a
-  documented export format.
-- Step 4: the renders from above and from a low angle, and the stroke export for the
-  ink pass.
 - The policy was never trained with the arm out or with a load on the floor.
   Training `five_foot` with the arm sampled over the writing band would widen the
   band and let it walk while writing (option B).
