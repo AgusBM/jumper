@@ -15,7 +15,10 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parents[3]
 CHECKPOINT = REPO / "tasks/jumper/five_foot/out/example/model_86600.pt"
-TASK = "jumper.five_foot"
+#: This task's replay config: five_foot's with the brush, and no writing command
+#: (here the tools drive the arm). Its policy is five_foot's network, so the shipped
+#: five_foot checkpoint and a fine-tuned calligraphy one both load.
+TASK = "jumper.calligraphy"
 
 
 class Operator:
@@ -67,11 +70,9 @@ def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT) -> Sim:
     from tasks.jumper.five_foot.claw import ARM_JOINTS
 
     from . import arm as armmod
-    from . import brush
 
     cfg = tasks.load_env_cfg(TASK, play=True)
     cfg.scene.num_envs = num_envs
-    brush.apply(cfg)
     cfg.commands["body_pose"].rel_neutral_envs = 1.0
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
     agent = tasks.load_agent_cfg(TASK)

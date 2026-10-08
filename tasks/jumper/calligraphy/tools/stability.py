@@ -2,7 +2,7 @@
 """Where in the reach band does the trunk stand still with the arm out there?
 
     python tasks/jumper/calligraphy/tools/stability.py            # ~10 min on 4 CPU cores
-    python tasks/jumper/calligraphy/tools/stability.py --grid 0.015
+    python tasks/jumper/calligraphy/tools/stability.py --checkpoint <run>/model_<n>.pt --palm-x-min 0.10
 
 The reach band (`arm.reach_map`) is kinematics: where the brush can go. Whether
 `jumper.five_foot`'s policy -- trained with the arm folded -- holds the trunk still
@@ -15,7 +15,7 @@ the way `write.py` does (3 s), holds it HOLD_S, and measures what the trunk did 
 the hold. A cell is stable when the trunk moved less than DRIFT_MAX, turned less
 than TURN_MAX and stayed within HEIGHT_MAX of its height before unfolding. The
 result is stored beside the reach band it was measured on
-(`logs/calligraphy/cache/stable_<key>.npz`), every band cell taking the verdict of
+(`logs/calligraphy/cache/stable_<band>_<checkpoint>.npz`), every band cell taking the verdict of
 its nearest grid point, and `write.py` intersects the band with it.
 """
 
@@ -38,10 +38,24 @@ TURN_MAX = 4.0       # deg
 HEIGHT_MAX = 0.010   # m
 
 
+def stable_name(reach_key: str, checkpoint: Path) -> str:
+    """The map belongs to a band **and** a policy: a fine-tuned policy holds still
+    where the shipped one does not, so the checkpoint is part of the name."""
+    import hashlib
+
+    tag = hashlib.sha1(str(Path(checkpoint).resolve()).encode()).hexdigest()[:8]
+    return f"stable_{reach_key}_{Path(checkpoint).stem}_{tag}.npz"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--grid", type=float, default=0.02, help="spacing of the probes, m")
+    ap.add_argument("--checkpoint", type=Path, default=None,
+                    help="the policy to measure; default: five_foot's shipped one")
+    ap.add_argument("--palm-x-min", type=float, default=None,
+                    help="the band's palm limit (arm.PALM_X_MIN by default; 0.10 is the "
+                         "training band)")
     args = ap.parse_args()
 
     import torch
@@ -51,8 +65,10 @@ def main() -> int:
     from tasks.jumper.five_foot.claw import ARM_JOINTS, LF_GRASP
 
     # The band first, on a one-robot model -- the same model and cache write.py uses.
-    probe = sim.build(1)
-    arm = armmod.Arm(probe.env.sim.mj_model)
+    ckpt = args.checkpoint or sim.CHECKPOINT
+    probe = sim.build(1, ckpt)
+    arm = armmod.Arm(probe.env.sim.mj_model,
+                     palm_x_min=args.palm_x_min or armmod.PALM_X_MIN)
     standing = sim.standing_qpos(probe.env.sim.mj_model)
     rm = armmod.cached_reach_map(arm, standing, CACHE)
     probe.env.close()
@@ -71,7 +87,7 @@ def main() -> int:
         p = np.array([rm.x0 + a * rm.cell, rm.y0 + b * rm.cell, armmod.HOVER])
         q_hover[i], _ = arm.ik(p, rm.seed[a, b])
 
-    sm = sim.build(n)
+    sm = sim.build(n, ckpt)
     stow = np.array([LF_GRASP[j] for j in ARM_JOINTS])
     obs = sm.wrapped.get_observations()
     robot = sm.robot
@@ -126,7 +142,7 @@ def main() -> int:
     _, nearest = cKDTree(probe_xy).query(xy)
     stable = np.zeros_like(rm.ok)
     stable[cells[:, 0], cells[:, 1]] = ok[nearest]
-    path = CACHE / f"stable_{rm.key}.npz"
+    path = CACHE / stable_name(rm.key, ckpt)
     np.savez(path, ok=stable, probes=probe_xy, probe_ok=ok, drift=drift, turn=turn, rise=rise,
              fell=fell)
     print(f"[stability] band {rm.ok.sum() * rm.cell**2 * 1e4:.0f} cm^2 -> stable "
@@ -147,7 +163,7 @@ def main() -> int:
     ax.set_xlabel("-y (trunk frame, m)")
     ax.set_ylabel("x (m)")
     ax.set_title("Where five_foot holds still with the arm out")
-    fig.savefig(CACHE / f"stable_{rm.key}.png", dpi=90, bbox_inches="tight")
+    fig.savefig(path.with_suffix(".png"), dpi=90, bbox_inches="tight")
     sm.env.close()
     return 0
 

@@ -32,7 +32,9 @@ Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
 > yet -- see [Where it stands](#where-it-stands). The gif in the repository's
 > README is from the earlier version (runs 6-7 below).
 
-**This is not a task.** Nothing is trained: `jumper.five_foot`'s shipped policy
+**Two things live here.** The tools write a character with a policy; the task
+`jumper.calligraphy` trains that policy -- see [Training the fix](#training-the-fix).
+With the shipped policy nothing is trained: `jumper.five_foot`'s shipped policy
 (`tasks/jumper/five_foot/out/example/model_86600.pt`) walks and stands on five legs,
 and everything here sits on top of it -- the arm that policy leaves out of its action
 is driven by inverse kinematics, and its velocity command by a steering loop. There
@@ -47,6 +49,9 @@ is no `env_cfg.py` or `rl_cfg.py`, so the registry does not see the directory.
 | `brush.py` | the brush: a 13 mm handle in the shut claw, a black cone of hair that may sink into the floor; the ink's width is the cone's section there |
 | `sim.py` | the environment, policy and the two commands taken over from the operator, shared by the tools |
 | `tools/stability.py` | where in the reach band the policy holds the trunk still with the arm out |
+| `env_cfg.py`, `rl_cfg.py` | the task `jumper.calligraphy`: five_foot's config with the brush, the writing command and `hold_position` |
+| `mdp/writing.py` | the command that takes the arm out to write during training, and the reward for holding still |
+| `tools/writing_poses.py`, `data/writing_poses.npz` | the arm poses the training writes with (1028 cells, 257 cm^2, palm >= 0.10 m) |
 | `arm.py` | IK for the brush tip against the trunk's measured pose; the band of floor it can write on; floor-safe fold paths |
 | `stations.py` | cuts each stroke into stretches the arm can write from one place, and where to stand for each |
 | `tools/strokes.py` | step 1 |
@@ -158,3 +163,48 @@ millimetres on command. Fine-tuning `jumper.five_foot` for exactly that -- the a
 swept over the writing band while standing, precise low-speed positioning -- is
 the change that would let the character grow back to 20-30 cm with every stroke
 whole.
+
+## Training the fix
+
+`jumper.calligraphy` is `jumper.five_foot` fine-tuned from its shipped checkpoint
+so that it stands still while the arm writes. What it adds, and why each number
+is what it is, is in `env_cfg.py`'s docstring; in short: about half of every
+episode the arm is out -- unfolded over 2-4 s, moved between floor poses 2-8 cm
+apart at 2-6 cm/s, hovering, touching or sunk, then folded -- with the robot told
+to stand level, and `hold_position` rewards staying within ~10 mm and ~3 deg of
+where the trunk stood when it became still.
+
+On a machine with an NVIDIA GPU (warp is chosen by default):
+
+```bash
+python scripts/train.py --task jumper.calligraphy --headless \
+    --checkpoint tasks/jumper/five_foot/out/example/model_86600.pt
+```
+
+It resumes at five_foot's iteration 86600 with its curriculum levels, and runs
+3000 iterations (`--max-iterations` to change). What to watch in TensorBoard:
+
+| curve | should |
+|---|---|
+| `Episode_Reward/hold_position` | rise -- the trunk holding still with the arm out |
+| `Metrics/writing/hold_drift` | fall towards a few millimetres |
+| `Episode_Reward/track_linear_velocity`, `track_angular_velocity` | stay where five_foot had them: walking must not be forgotten |
+| `Episode_Termination/fell_over`, `too_low` | stay near 0 |
+
+Smoke-tested on this container's CPU (native, 64 robots, 20 iterations,
+2026-10-08): the checkpoint loads strictly, the arm is out for half the robots,
+no robot fell, `hold_drift` 8-12 mm at the start.
+
+Then, with the trained checkpoint (`logs/<model>/jumper.calligraphy/<run>/model_<n>.pt`):
+
+```bash
+# where the new policy holds still, over the wider training band (~3 min)
+python tasks/jumper/calligraphy/tools/stability.py --checkpoint <ckpt> --palm-x-min 0.10
+# write 无 with it: the size is fitted to the band it now holds still over
+python tasks/jumper/calligraphy/tools/write.py --checkpoint <ckpt> --palm-x-min 0.10
+# render (on a GPU machine MUJOCO_GL=egl is much faster than osmesa)
+MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u65e0/<run>
+```
+
+`write.py` prints the fitted size, the trunk's drift through every stroke and any
+seam; a seam or a drift over ~5 mm is what the training has not fixed yet.

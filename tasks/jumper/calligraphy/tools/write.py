@@ -187,6 +187,10 @@ def main() -> int:
                     help="how far inside the reach band every written point must be, m")
     ap.add_argument("--checkpoint", type=Path,
                     default=REPO / "tasks/jumper/five_foot/out/example/model_86600.pt")
+    ap.add_argument("--palm-x-min", type=float, default=None,
+                    help="how far ahead of the trunk the palm must stay, m (arm.PALM_X_MIN, "
+                         "where the shipped policy holds still; a jumper.calligraphy policy "
+                         "is trained down to 0.10)")
     ap.add_argument("--plan-only", action="store_true",
                     help="cut the plan into stretches, draw them, and stop")
     ap.add_argument("--max-stretches", type=int, default=None)
@@ -209,13 +213,19 @@ def main() -> int:
     steer, pose_cmd, dt = sm.steer, sm.pose, sm.dt
 
     # ── Where the arm can write, and the cut ─────────────────────────────────
-    arm = armmod.Arm(env.sim.mj_model)
+    arm = armmod.Arm(env.sim.mj_model, palm_x_min=args.palm_x_min or armmod.PALM_X_MIN)
     standing = sim.standing_qpos(env.sim.mj_model)
     t0 = time.time()
     rm = armmod.cached_reach_map(arm, standing, CACHE)
     print(f"[write] reach band: {rm.ok.sum() * rm.cell**2 * 1e4:.0f} cm^2 "
           f"({time.time() - t0:.1f} s)")
-    stable = CACHE / f"stable_{rm.key}.npz"
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "stability", Path(__file__).resolve().parent / "stability.py")
+    stability = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stability)
+    stable = CACHE / stability.stable_name(rm.key, args.checkpoint)
     if stable.exists():
         rm.ok &= np.load(stable)["ok"]
         print(f"[write] where the policy also stands still (tools/stability.py): "

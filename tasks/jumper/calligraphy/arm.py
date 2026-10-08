@@ -94,8 +94,12 @@ class ReachMap:
 
 
 class Arm:
-    def __init__(self, model: mujoco.MjModel):
+    def __init__(self, model: mujoco.MjModel, palm_x_min: float = PALM_X_MIN):
         self.m = model
+        #: See PALM_X_MIN. Lowered only to build the training poses
+        #: (`tools/writing_poses.py`), where the point is to go where the shipped
+        #: policy does not yet hold still.
+        self.palm_x_min = palm_x_min
         self.d = mujoco.MjData(model)
         jid = [model.joint(PREFIX + j).id for j in ARM_JOINTS]
         self.qadr = np.array([model.jnt_qposadr[j] for j in jid])
@@ -204,7 +208,7 @@ class Arm:
         """The constraints above, on a model whose arm geoms carry a contact margin."""
         data.qpos[self.qadr] = q
         mujoco.mj_forward(model, data)
-        if data.site_xpos[self.palm_tip][0] < PALM_X_MIN:
+        if data.site_xpos[self.palm_tip][0] < self.palm_x_min:
             return False
         # Only the hair goes into the floor: its base, and so the handle, stays out.
         if data.site_xpos[self.base][2] < FLOOR_CLEARANCE:
@@ -305,7 +309,7 @@ def cached_reach_map(arm: Arm, standing_qpos: np.ndarray, cache_dir) -> ReachMap
     h = hashlib.sha1()
     for a in (m.body_pos, m.body_quat, m.jnt_range, m.site_pos, m.geom_pos, m.geom_size,
               m.geom_quat, m.geom_contype, m.geom_conaffinity, np.asarray(standing_qpos),
-              np.array([PALM_X_MIN, HOVER, FLOOR_CLEARANCE, DEPTH_MAX, REACH_VERSION])):
+              np.array([arm.palm_x_min, HOVER, FLOOR_CLEARANCE, DEPTH_MAX, REACH_VERSION])):
         h.update(np.ascontiguousarray(a).tobytes())
     key = h.hexdigest()[:12]
     path = Path(cache_dir) / f"reach_{key}.npz"
