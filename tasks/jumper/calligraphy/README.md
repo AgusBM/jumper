@@ -17,12 +17,20 @@ Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
 | file | step | what it is |
 |---|---|---|
 | `plan.json`, `stretches.json` | 1, 2 | the strokes on the floor, and how they were cut and written |
-| `log.npz` | 3 | one row per 20 ms control step -- phase, stroke, target and measured tip, contact and force, trunk pose, command -- and the full `qpos` |
+| `log.npz` | 3 | one row per 20 ms control step -- phase, stroke, target and measured tip, the ink point and width, trunk pose, command -- and the full `qpos` |
 | `model.mjb` | 3 | the compiled model that `qpos` belongs to |
 | `topview.png` | 2 | the plan beside where the brush touched the floor |
 | `top.mp4`, `low.mp4` | 4 | overhead and low shots, real time, 960x720 at 30 fps, ink drawn as it is laid (`--no-ink`: clean plates) |
 | `wu.gif` | 4 | the overhead shot at 6x, 480x360, for the README |
 | `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
+
+> **Status (2026-10-08): being reworked.** The brush is now a thick handle gripped by
+> the shut claw and a black cone of hair that sinks into the floor (no contact
+> forces); every stroke is meant to be written whole with the trunk still, the
+> character sized so its longest stroke fits the arm's reach. Strokes 1 and 2 of
+> 无 now come out whole with the trunk still to 3-7 mm; strokes 3 and 4 do not
+> yet -- see [Where it stands](#where-it-stands). The gif in the repository's
+> README is from the earlier version (runs 6-7 below).
 
 **This is not a task.** Nothing is trained: `jumper.five_foot`'s shipped policy
 (`tasks/jumper/five_foot/out/example/model_86600.pt`) walks and stands on five legs,
@@ -36,7 +44,9 @@ is no `env_cfg.py` or `rl_cfg.py`, so the registry does not see the directory.
 |---|---|
 | `hanzi.py` | a character's medians (Make Me a Hanzi) -> stroke trajectories on the floor, with a press profile |
 | `data/` | one verbatim `graphics.txt` entry per character, and the Arphic Public License they are under |
-| `brush.py` | the brush: welded in the claw's mouth, a soft tip that collides only with the floor, a contact sensor |
+| `brush.py` | the brush: a 13 mm handle in the shut claw, a black cone of hair that may sink into the floor; the ink's width is the cone's section there |
+| `sim.py` | the environment, policy and the two commands taken over from the operator, shared by the tools |
+| `tools/stability.py` | where in the reach band the policy holds the trunk still with the arm out |
 | `arm.py` | IK for the brush tip against the trunk's measured pose; the band of floor it can write on; floor-safe fold paths |
 | `stations.py` | cuts each stroke into stretches the arm can write from one place, and where to stand for each |
 | `tools/strokes.py` | step 1 |
@@ -94,16 +104,16 @@ times) or drifted out of reach while writing (once).
 ## The ink, for post-production
 
 `ink.json` holds every **mark** -- one continuous trace of the brush -- with, per
-point: the time it was laid, its floor xy, the normal force, the planned press and
+point: the time it was laid, its floor xy, the depth, the planned press and
 a suggested width; and its **pixel position in each shot**, with each shot's
 intrinsics and pose. So a compositor can lay the ink down frame by frame on the
 clean plates (`render.py --no-ink`) without knowing anything about the simulation.
 
-- A contact counts as ink only while the arm is lowering, writing or lifting.
-  Gaps of up to 0.1 s inside a stretch are bridged -- the simulated tip is a rigid
-  ball that skips where wet hair would not -- which takes 无 from 71 marks to 10.
-- The width is derived, not measured: `0.065 * size * clip(force / 1 N, 0.25, 1.3)`.
-  The raw force and press are there for any other rule.
+- The hair counts as ink only while the arm is lowering, writing or lifting, and
+  only where the cone is below the floor; the ink is centred where its axis meets
+  the floor and is as wide as its section there (`brush.ink_point`,
+  `brush.section_width`). Gaps of up to 0.1 s inside a stretch are bridged.
+- The depth and the planned press are there for any other width rule.
 - The pixels are checked against the renderer (`render.py --check`: markers at
   known floor points): <= 0.5 px overhead, 1.4-2.1 px in the low shot.
 
@@ -123,3 +133,28 @@ the README quotes.
 - The policy was never trained with the arm out or with a load on the floor.
   Training `five_foot` with the arm sampled over the writing band would widen the
   band and let it walk while writing (option B).
+
+## Where it stands
+
+Measured after the rework (2026-10-08, native:cpu, MuJoCo 3.11.0):
+
+- **The trunk holds still while the arm writes** -- 2.5-7.4 mm and under 1.3 deg
+  through strokes 1 and 2 (run 15) -- once the brush no longer pushes on the floor
+  and the trunk is not twisted. Twisting it (the body-pose command) to bring a
+  stroke into reach made it stumble mid-stroke: 73 mm, 13 deg (run 14).
+- **The policy does not hold still everywhere in the band.** `tools/stability.py`
+  holds the arm at 57 points of the band for 6 s each: 44 stable, 13 not (drift
+  over 15 mm, a turn over 4 deg or the trunk off its height by 10 mm), mostly at the
+  band's two ends. The stable band is 177 of 226 cm^2.
+- **Placing the trunk to a few millimetres is what fails.** A stroke written whole
+  must lie inside the band from where the trunk stands, and the trunk ends up 5-10
+  mm from where it was sent: the walk stops within 5 mm, and the last step and the
+  unfolding arm move it again. With a 10 mm margin the character is 10.6 cm, and
+  strokes 3 and 4 still come out in two pieces about half the time (runs 13-16);
+  at that size the 28 mm cone is too large for the strokes.
+
+The policy was never trained to stand still with the arm out, nor to step a few
+millimetres on command. Fine-tuning `jumper.five_foot` for exactly that -- the arm
+swept over the writing band while standing, precise low-speed positioning -- is
+the change that would let the character grow back to 20-30 cm with every stroke
+whole.

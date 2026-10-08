@@ -32,11 +32,11 @@ right way round.
 
 ## Pressure
 
-A brush is not a pen: a stroke is pressed in at its start and lifted off towards
-its end, and that is most of what makes it look written. Each sample carries a
-`press` in [0, 1] -- the fraction of the full press depth -- with a short ramp in
-and a longer ramp out. The controller turns it into a depth, the ink pass into a
-width; neither is decided here.
+A brush is not a pen: a stroke is set down hard at its start and lifted off
+towards its end, and that is most of what makes it look written. Each sample
+carries a `press` -- the fraction of the stroke's full width, up to `HEAD` at the
+head -- see `press_profile`. The controller turns it into how deep the hair goes
+into the floor.
 """
 
 from __future__ import annotations
@@ -54,8 +54,12 @@ EM = 1024.0
 EM_CENTER = (512.0, 388.0)
 
 #: Fraction of each stroke's length spent pressing the brush in, and lifting it off.
-PRESS_IN = 0.08
-PRESS_OUT = 0.20
+PRESS_IN = 0.06
+PRESS_OUT = 0.25
+#: The head of the stroke is pressed this much harder than its body, and the tail
+#: leaves at this fraction of it.
+HEAD = 1.35
+TAIL = 0.35
 
 
 def entry_path(char: str) -> Path:
@@ -126,18 +130,22 @@ def _resample(path: np.ndarray, ds: float) -> np.ndarray:
 
 
 def press_profile(n: int) -> np.ndarray:
-    """0 -> 1 over the first PRESS_IN of the stroke, 1 -> 0.3 over the last PRESS_OUT.
+    """How hard the brush is pressed along a stroke, as a fraction of the full width.
 
-    It does not reach 0 at the end: a brush lifted all the way inside the stroke
-    leaves a gap before the stroke is over. The controller lifts it after the last
-    sample.
+    A person starts a stroke by setting the brush down **harder** than they carry it
+    -- 顿笔, the pause-press that gives a stroke its heavy head -- then eases to the
+    stroke's own weight and lifts towards the end. So: up to `HEAD` over the first
+    `PRESS_IN`, settling to 1 by `2 * PRESS_IN`, and down to `TAIL` over the last
+    `PRESS_OUT`. Never 0 inside the stroke: a brush lifted all the way before the
+    end leaves a gap; the controller lifts it after the last sample.
     """
     u = np.linspace(0.0, 1.0, n)
     rise = np.clip(u / PRESS_IN, 0.0, 1.0)
-    fall = 1.0 - 0.7 * np.clip((u - (1.0 - PRESS_OUT)) / PRESS_OUT, 0.0, 1.0)
-    # Smoothstep the rise, so the brush does not start with a corner in depth.
     rise = rise * rise * (3 - 2 * rise)
-    return np.minimum(rise, fall)
+    settle = np.clip((u - PRESS_IN) / PRESS_IN, 0.0, 1.0)
+    head = HEAD * rise - (HEAD - 1.0) * settle * settle * (3 - 2 * settle)
+    fall = 1.0 - (1.0 - TAIL) * np.clip((u - (1.0 - PRESS_OUT)) / PRESS_OUT, 0.0, 1.0)
+    return head * fall
 
 
 @dataclass

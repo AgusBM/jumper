@@ -18,15 +18,17 @@ the same branch.
 ## Where it can write
 
 `reach_map` walks a grid of floor cells in the trunk's frame, standing at
-`STAND_Z`, and keeps a cell when the tip can be put on the floor there **and**
-`HOVER` above it, with
+`STAND_Z`, and keeps a cell when the tip can be put on the floor there, `HOVER`
+above it **and** `DEPTH_MAX` below it -- the hair sinks into the floor to make a
+wide stroke, see `brush.py` -- with
 
   * the palm tip (`LF` site) at least `PALM_X_MIN` ahead of the trunk's centre --
     the stable sector measured with the shipped policy (step 0, 2026-10-08,
     `native:cpu`, 16 poses x 8 s, no pushes, tip 15 mm above the floor): palm tip
     >= 0.15 m forward drifted 1.4-2.8 cm and turned 0.6-3.8 deg; nearer the trunk
     up to 36 cm and 67 deg;
-  * no other part of the arm within `FLOOR_CLEARANCE` of the floor, and none in
+  * the base of the hair, and every colliding part of the arm, at least
+    `FLOOR_CLEARANCE` above the floor, and none of the arm in
     contact with the rest of the robot.
 
 The kept cells form a band around the shoulder, not a square: 359 cm^2 with the
@@ -48,7 +50,7 @@ from . import brush
 
 PREFIX = "robot/"
 #: Bumped whenever `reach_map` changes what it keeps, so the cache rebuilds.
-REACH_VERSION = 2
+REACH_VERSION = 3
 ARM_JOINTS = ("LF_J0_joint", "LF_J1_joint", "LF_J2_joint", "LF_J3_joint")
 FINGER_JOINT = "LF_J4_joint"
 #: The arm folded against the trunk, where five_foot walks with it.
@@ -58,10 +60,13 @@ STOW = np.array([LF_GRASP[j] for j in ARM_JOINTS])
 PALM_X_MIN = 0.13
 #: The brush is lifted this high between strokes, metres.
 HOVER = 0.015
+#: The apex goes this far below the floor at the deepest press, metres. The band
+#: is where the tip reaches all three heights: HOVER, the floor and -DEPTH_MAX.
+DEPTH_MAX = 0.012
 #: Nothing of the arm but the brush tip nearer the floor than this, metres.
 FLOOR_CLEARANCE = 0.003
 #: `fold_path` searches via poses when no joint ordering keeps this much clearance.
-FOLD_VIA_BELOW = 0.02
+FOLD_VIA_BELOW = 0.03
 VIA_SAMPLES = 300
 
 
@@ -75,6 +80,8 @@ class ReachMap:
     cell: float
     ok: np.ndarray
     seed: np.ndarray
+    #: The cache key it was stored under; the stability map is stored beside it.
+    key: str = ""
 
     def index(self, xy: np.ndarray) -> np.ndarray:
         return np.round((np.asarray(xy) - (self.x0, self.y0)) / self.cell).astype(int)
@@ -96,6 +103,7 @@ class Arm:
         self.lo = model.jnt_range[jid, 0]
         self.hi = model.jnt_range[jid, 1]
         self.tip = model.site(PREFIX + brush.TIP_SITE).id
+        self.base = model.site(PREFIX + brush.BASE_SITE).id
         self.palm_tip = model.site(PREFIX + "LF").id
         self.finger_tip = model.body(PREFIX + "LF_finger_tip_link").id
         self.lf_bodies = {
@@ -140,11 +148,14 @@ class Arm:
         return q, err
 
     def clearance(self, q: np.ndarray) -> float:
-        """Height above the floor of the lowest of the brush tip, the palm tip and
-        the finger tip, with the trunk as the last `set_state` left it."""
+        """Height above the floor of the lowest of the brush's apex and base, the
+        palm tip and the finger tip, with the trunk as the last `set_state` left it."""
         self.d.qpos[self.qadr] = q
         mujoco.mj_kinematics(self.m, self.d)
-        return float(min(self.d.site_xpos[self.tip][2], self.d.site_xpos[self.palm_tip][2],
+        # The apex too: folding is not writing, and an apex dipped on the way
+        # leaves ink where no stroke is (11 steps in run 10, when only the base counted).
+        return float(min(self.d.site_xpos[self.tip][2], self.d.site_xpos[self.base][2],
+                         self.d.site_xpos[self.palm_tip][2],
                          self.d.xpos[self.finger_tip][2]))
 
     def fold_path(self, q_from: np.ndarray, q_to: np.ndarray,
@@ -195,6 +206,9 @@ class Arm:
         mujoco.mj_forward(model, data)
         if data.site_xpos[self.palm_tip][0] < PALM_X_MIN:
             return False
+        # Only the hair goes into the floor: its base, and so the handle, stays out.
+        if data.site_xpos[self.base][2] < FLOOR_CLEARANCE:
+            return False
         for c in data.contact[: data.ncon]:
             b1, b2 = model.geom_bodyid[c.geom1], model.geom_bodyid[c.geom2]
             if (b1 in self.lf_bodies) == (b2 in self.lf_bodies):
@@ -221,7 +235,7 @@ def reach_map(arm: Arm, standing_qpos: np.ndarray, cell: float = 0.005,
 
     m = copy.deepcopy(arm.m)
     for g in range(m.ngeom):
-        if m.geom_bodyid[g] in arm.lf_bodies and not m.geom(g).name.endswith(brush.TIP_GEOM):
+        if m.geom_bodyid[g] in arm.lf_bodies and m.geom_contype[g]:
             m.geom_margin[g] = max(m.geom_margin[g], 2 * FLOOR_CLEARANCE)
     d = mujoco.MjData(m)
     arm.set_state(standing_qpos)
@@ -231,7 +245,7 @@ def reach_map(arm: Arm, standing_qpos: np.ndarray, cell: float = 0.005,
     pts, qs = [], []
     for combo in itertools.product(*grids):
         p = arm.tip_pos(np.array(combo))
-        if -0.01 < p[2] < HOVER + 0.03:
+        if -DEPTH_MAX - 0.01 < p[2] < HOVER + 0.03:
             pts.append(p[:2])
             qs.append(combo)
     pts, qs = np.array(pts), np.array(qs)
@@ -259,6 +273,9 @@ def reach_map(arm: Arm, standing_qpos: np.ndarray, cell: float = 0.005,
                 continue
             q_hover, e1 = arm.ik(np.array([*xy, HOVER]), q_floor)
             if e1 > 1e-3 or not arm.writable(q_hover, m, d):
+                continue
+            q_deep, e2 = arm.ik(np.array([*xy, -DEPTH_MAX]), q_floor)
+            if e2 > 1e-3 or not arm.writable(q_deep, m, d):
                 continue
             # The solution nearest the stow, of those that work. LF_J1 turns
             # through 6.15 rad, more than a revolution, so one cell has solutions
@@ -288,13 +305,16 @@ def cached_reach_map(arm: Arm, standing_qpos: np.ndarray, cache_dir) -> ReachMap
     h = hashlib.sha1()
     for a in (m.body_pos, m.body_quat, m.jnt_range, m.site_pos, m.geom_pos, m.geom_size,
               m.geom_quat, m.geom_contype, m.geom_conaffinity, np.asarray(standing_qpos),
-              np.array([PALM_X_MIN, HOVER, FLOOR_CLEARANCE, REACH_VERSION])):
+              np.array([PALM_X_MIN, HOVER, FLOOR_CLEARANCE, DEPTH_MAX, REACH_VERSION])):
         h.update(np.ascontiguousarray(a).tobytes())
-    path = Path(cache_dir) / f"reach_{h.hexdigest()[:12]}.npz"
+    key = h.hexdigest()[:12]
+    path = Path(cache_dir) / f"reach_{key}.npz"
     if path.exists():
         z = np.load(path)
-        return ReachMap(float(z["x0"]), float(z["y0"]), float(z["cell"]), z["ok"], z["seed"])
+        return ReachMap(float(z["x0"]), float(z["y0"]), float(z["cell"]), z["ok"], z["seed"],
+                        key)
     rm = reach_map(arm, standing_qpos)
+    rm.key = key
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(path, x0=rm.x0, y0=rm.y0, cell=rm.cell, ok=rm.ok, seed=rm.seed)
     return rm

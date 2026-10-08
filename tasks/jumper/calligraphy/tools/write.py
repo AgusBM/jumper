@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Step 2: Jumper writes a character on the floor with a brush.
 
-    python tasks/jumper/calligraphy/tools/write.py                   # 无, 0.30 m
-    python tasks/jumper/calligraphy/tools/write.py --char 无 --size 0.30 --plan-only
+    python tasks/jumper/calligraphy/tools/write.py                   # 无, as large as fits
+    python tasks/jumper/calligraphy/tools/write.py --char 无 --plan-only
 
 `jumper.five_foot`'s trained policy walks and stands; this moves the carried arm,
 which that task leaves out of the policy's action, and drives the policy's
@@ -10,8 +10,13 @@ velocity command. Nothing is trained and nothing in the policy changes.
 
 ## The loop
 
-The plan (`hanzi.py`) is cut into stretches the arm can reach from one place
-(`stations.py`). For each stretch:
+**Every stroke is written by the arm alone, the trunk standing still.** A stroke
+cut into pieces with a walk in between shows every seam -- the trunk never stops
+exactly where it was sent -- and a trunk that moves while the arm writes makes
+the line wander: 无's long middle stroke did both. So the character is made as
+large as it can be with every stroke whole in the arm's reach from one place
+(`stations.fit_size`): the longest stroke sets the size and the rest is scaled
+with it. For each stroke:
 
     walk     the arm held still, the velocity command steering the trunk to the
              stretch's station: position and heading, then a short settle
@@ -19,8 +24,9 @@ The plan (`hanzi.py`) is cut into stretches the arm can reach from one place
              point -- in joint space from the stow on the first stretch, in a
              straight line otherwise
     lower    down onto the floor
-    write    along the stretch at `--speed`, pressed in by `press * --depth`
-    lift     back up to `HOVER`
+    write    along the stroke at `--speed`, the hair sunk into the floor as deep
+             as the stroke's width there calls for (`brush.section_width`)
+    lift     back up to `HOVER`, then fold the arm to walk to the next stroke
 
 Every target is solved against the trunk **as it is**, each control step
 (`arm.py`): the trunk is never exactly where it was sent and drifts while the arm
@@ -30,10 +36,11 @@ writes, and solving against the measured pose is what keeps that out of the ink.
 
 `logs/calligraphy/<u65e0>/<time>/`: `stretches.json` (the cut, as written --
 replanned stretches included), `log.npz` (one row per control step: phase, stroke,
-target and measured tip, the brush's contact and force, the trunk's pose, the IK
+target and measured tip, whether the hair is in the floor and the width it leaves
+there, the trunk's pose, the IK
 residual, the command; and the full `qpos`), `model.mjb` (the compiled model that
 `qpos` belongs to, for `render.py`) and
-`topview.png`, the plan beside where the brush actually touched the floor.
+`topview.png`, the plan beside where the hair actually went into the floor.
 
 The policy runs on `native:cpu` by default -- one environment, so a GPU buys
 nothing here.
@@ -45,7 +52,6 @@ import argparse
 import json
 import math
 import time
-import warnings
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,8 +59,7 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[4]
-CHECKPOINT = REPO / "tasks/jumper/five_foot/out/example/model_86600.pt"
-TASK = "jumper.five_foot"
+CACHE = REPO / "logs" / "calligraphy" / "cache"
 
 # Phases, as logged.
 WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE = range(8)
@@ -65,24 +70,57 @@ K_POS, V_MAX = 1.5, 0.12          # 1/s, m/s
 K_YAW, W_MAX = 2.0, 0.6           # 1/s, rad/s
 #: Below this the policy stands rather than steps; a correction is sent at least this fast.
 V_MIN = 0.08
-#: A stretch is replanned when, from where the trunk stopped, fewer than this many
-#: samples are this far inside the band; the walk is retried first.
-RUN_MARGIN = 0.004                # m
-MIN_SAMPLES = 20
-WALK_ATTEMPTS = 2
+#: After a walk, the stroke has to be this far inside the band from where the trunk
+#: actually stopped. The walk gets within 5 mm, but stopping, the trunk sways back
+#: 5-7 mm with the last step (run 8, 2026-10-08), and walking again repeats it. So
+#: the rest is closed by nudges -- a short push of the velocity command towards the
+#: station, then a settle and a new measurement -- up to NUDGES times; only then is
+#: the stroke split (a seam, reported).
+RUN_MARGIN = 0.003                # m
+NUDGES = 5
+#: A stroke that is out of reach by a little after unfolding is moved, whole, by
+#: up to this much -- the smallest shift that fits -- instead of being cut.
+SHIFT_MAX = 0.005                 # m
+SHIFT_STEP = 0.001                # m
+#: The one way the trunk moves once the arm is out -- and only before a stroke
+#: starts, never during it: the policy's body-pose command turns the trunk over
+#: its planted feet ("twist", +-30 deg standing). Unfolding leaves the trunk
+#: settled 5-10 mm from where it stood, and the arm out, five_foot does not walk;
+#: but a 2-3 deg twist swings the whole band a centimetre at the stroke's distance.
+#: So after unfolding, the smallest twist that brings the whole stroke into reach
+#: is commanded, held through the stroke, and released before the arm folds.
+TWIST_MAX = math.radians(15.0)
+TWIST_STEP = math.radians(1.0)
+TWIST_SETTLE_S = 1.2
+#: Off: the trunk turned more than asked (+6 deg -> +10.3) and, twisted with the
+#: arm out, stumbled in the middle of a stroke -- 73 mm and 13 deg while 无's third
+#: stroke was written (run 14). Without it the trunk held within 12 mm and 2 deg
+#: through every stroke of run 15 (2026-10-08, native:cpu).
+TWIST_TRIES = 0
+#: Folding, nudging and unfolding again this many times before a seam.
+UNFOLD_TRIES = 3
+#: When less than this many samples are in reach, the stroke is not split there:
+#: it gets a new station, up to MAX_REPLANS times per stroke.
+MIN_PIECE = 15
+MAX_REPLANS = 2
+NUDGE_V = 0.07                    # m/s commanded
+NUDGE_RATE = 0.035                # m/s the trunk actually moves under it (assumed)
+NUDGE_T = (0.12, 0.8)             # s, the shortest and longest push
 #: While writing, this many consecutive IK misses end the stretch where it is.
 MISS_STEPS = 3
 #: The arm comes to rest for this long after unfolding or folding; going straight
 #: on, the swing carried the tip 15 mm below the line it was sent along.
-ARM_SETTLE_S = 0.3
+ARM_SETTLE_S = 1.0
 #: Warn when no fold path keeps the arm this far off the floor.
-FOLD_CLEARANCE = 0.01
+FOLD_CLEARANCE = 0.02
 #: Arrived: within this of the station, and of its heading.
-POS_TOL, YAW_TOL = 0.010, math.radians(3.0)
+POS_TOL, YAW_TOL = 0.006, math.radians(2.0)
 WALK_TIMEOUT = 12.0               # s
 SETTLE_S = 0.6
-UNFOLD_S = 1.5                    # joint-space reach from the stow
-FOLD_S = 1.2                      # and back to it before walking
+#: Unfolding takes this long. At 1.5 s the swing staggered the robot: the trunk
+#: slid +-20 mm, turned 15 deg and rose to 136 mm, and wrote 无's second stroke
+#: from there (run 9, 2026-10-08).
+UNFOLD_S = 3.0
 REACH_SPEED = 0.06                # m/s, hover moves between stretches
 LOWER_S, LIFT_S = 0.35, 0.30
 #: Unfolding and folding go through a point this high above the floor, and the
@@ -99,27 +137,29 @@ IK_RETRY = 0.002                  # m
 LEAD_S = 0.12                     # s
 KI = 4.0                          # 1/s
 CORR_MAX = 0.015                  # m
-#: Pressing. A fixed depth below the floor pushed with 0-6 N as the trunk moved
-#: under the arm, and on 无's long middle stroke that push turned the trunk from
-#: -8 to -56 deg and lifted it 15 mm while the brush bounced (contact on 81% of
-#: steps; 2026-10-08, native:cpu). So the depth is only where the press starts:
-#: an integrator moves the tip up or down to hold the normal force at
-#: `press * --force`.
-KF = 0.004                        # m per N*s
-ZCORR = (-0.004, 0.006)           # m, how far the integrator may move the tip
+#: Pressing. The hair is a cone that may go into the floor (`brush.py`), and the
+#: ink is its section there. The depth that gives a width depends on how the brush
+#: leans, so the depth starts from a guess -- vertical depth = width, right for a
+#: brush leaning ~40 deg -- and an integrator on the measured section moves the
+#: tip up or down until the width is `press * width_full`.
+KW = 3.0                          # m of depth per m of width error per s
+ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 
 
-class _Steer:
-    """Stands in for the operator on the twist command: returns our command."""
+def _shift_to_fit(s, c, base, yaw, rm, dist):
+    """The smallest shift of stroke `s` (within SHIFT_MAX) that brings samples
+    [c.start, c.end] into reach from the trunk at `base`, `yaw`; or None."""
+    from tasks.jumper.calligraphy import hanzi, stations
 
-    def __init__(self):
-        self.values = [0.0, 0.0, 0.0]
-
-    def command(self, term, stamp=None):
-        return list(self.values)
-
-    def task_control(self, name, stamp=None):
-        return None
+    r = np.arange(-SHIFT_MAX, SHIFT_MAX + 1e-9, SHIFT_STEP)
+    offsets = sorted(((dx, dy) for dx in r for dy in r if math.hypot(dx, dy) <= SHIFT_MAX),
+                     key=lambda d: math.hypot(*d))
+    for d in offsets:
+        moved = hanzi.Stroke(s.index, s.xy + np.asarray(d), s.press)
+        if stations.reachable_until(moved, c.start, c.end, base, yaw, rm, RUN_MARGIN,
+                                    dist) == c.end:
+            return np.asarray(d), moved
+    return None
 
 
 def _yaw(quat_wxyz: np.ndarray) -> float:
@@ -135,86 +175,66 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--char", default="无")
-    ap.add_argument("--size", type=float, default=0.30, help="em square, metres")
+    ap.add_argument("--size", type=float, default=None,
+                    help="em square, metres; default: as large as fits stroke by stroke")
     ap.add_argument("--origin", type=float, nargs=2, default=(0.45, 0.0),
                     help="world xy of the character's centre; the robot starts at 0,0 "
                          "facing +x")
-    ap.add_argument("--speed", type=float, default=0.04, help="writing speed, m/s")
-    ap.add_argument("--depth", type=float, default=0.003,
-                    help="how far the tip is pressed below the floor at full press, m")
-    ap.add_argument("--force", type=float, default=1.0,
-                    help="normal force at full press, N")
-    ap.add_argument("--margin", type=float, default=0.012,
+    ap.add_argument("--speed", type=float, default=0.03, help="writing speed, m/s")
+    ap.add_argument("--width", type=float, default=0.065,
+                    help="the stroke's full width, as a fraction of the character's size")
+    ap.add_argument("--margin", type=float, default=0.010,
                     help="how far inside the reach band every written point must be, m")
-    ap.add_argument("--checkpoint", type=Path, default=CHECKPOINT)
+    ap.add_argument("--checkpoint", type=Path,
+                    default=REPO / "tasks/jumper/five_foot/out/example/model_86600.pt")
     ap.add_argument("--plan-only", action="store_true",
                     help="cut the plan into stretches, draw them, and stop")
     ap.add_argument("--max-stretches", type=int, default=None)
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 
-    warnings.filterwarnings("ignore")
     import torch
-    from mjrl.backend.resolve import resolve
-    from mjrl.backend.select import use_backend
 
-    use_backend(resolve(backend="native", device="cpu", num_envs=1))
-
-    from dataclasses import asdict
-
-    from mjlab.envs import ManagerBasedRlEnv
-    from mjlab.rl import RslRlVecEnvWrapper
-    from mjlab.rl.runner import MjlabOnPolicyRunner
-
-    import tasks
     from tasks.jumper.calligraphy import arm as armmod
-    from tasks.jumper.calligraphy import brush, hanzi, stations
-    from tasks.jumper.common.constants import HOME, STAND_Z
+    from tasks.jumper.calligraphy import brush, hanzi, sim, stations
     from tasks.jumper.five_foot.claw import ARM_JOINTS, LF_GRASP
 
-    plan = hanzi.plan(args.char, args.size, tuple(args.origin))
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d_%H-%M-%S")
     out = args.out or REPO / "logs" / "calligraphy" / f"u{ord(args.char):04x}" / stamp
     out.mkdir(parents=True, exist_ok=True)
 
     # ── The environment: five_foot's replay config, plus the brush ───────────
-    cfg = tasks.load_env_cfg(TASK, play=True)
-    cfg.scene.num_envs = 1
-    brush.apply(cfg)
-    pose = cfg.commands["body_pose"]
-    pose.rel_neutral_envs = 1.0  # level trunk throughout
-    env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
-    agent = tasks.load_agent_cfg(TASK)
-    wrapped = RslRlVecEnvWrapper(env, clip_actions=agent.clip_actions)
-    runner_cls = tasks.load_runner_cls(TASK) or MjlabOnPolicyRunner
-    runner = runner_cls(wrapped, asdict(agent), device="cpu")
-    runner.load(str(args.checkpoint), load_cfg={"actor": True}, strict=True,
-                map_location="cpu")
-    policy = runner.get_inference_policy(device="cpu")
-    steer = _Steer()
-    env.command_manager.get_term("twist")._operator = steer
-
-    robot = env.scene["robot"]
-    carried = list(ARM_JOINTS) + [armmod.FINGER_JOINT]
-    jids = [robot.joint_names.index(j) for j in carried]
-    sensor = env.scene.sensors["brush_ground"]
-    dt = env.step_dt
+    sm = sim.build(1, args.checkpoint)
+    env, wrapped, policy, robot, jids = sm.env, sm.wrapped, sm.policy, sm.robot, sm.joint_ids
+    steer, pose_cmd, dt = sm.steer, sm.pose, sm.dt
 
     # ── Where the arm can write, and the cut ─────────────────────────────────
     arm = armmod.Arm(env.sim.mj_model)
-    # Standing at the origin, level, legs at HOME, the brush in the claw: fixed,
-    # not read from the simulation, whose reset randomises the joints.
-    mjm = env.sim.mj_model
-    standing = mjm.qpos0.astype(np.float64).copy()
-    standing[0:3] = (0.0, 0.0, STAND_Z)
-    standing[3:7] = (1.0, 0.0, 0.0, 0.0)
-    for name, value in {**HOME, armmod.FINGER_JOINT: brush.FINGER_HOLD}.items():
-        standing[mjm.jnt_qposadr[mjm.joint(armmod.PREFIX + name).id]] = value
+    standing = sim.standing_qpos(env.sim.mj_model)
     t0 = time.time()
-    rm = armmod.cached_reach_map(arm, standing, REPO / "logs" / "calligraphy" / "cache")
+    rm = armmod.cached_reach_map(arm, standing, CACHE)
     print(f"[write] reach band: {rm.ok.sum() * rm.cell**2 * 1e4:.0f} cm^2 "
           f"({time.time() - t0:.1f} s)")
-    cut = stations.plan_stretches(plan, rm, margin=args.margin)
+    stable = CACHE / f"stable_{rm.key}.npz"
+    if stable.exists():
+        rm.ok &= np.load(stable)["ok"]
+        print(f"[write] where the policy also stands still (tools/stability.py): "
+              f"{rm.ok.sum() * rm.cell**2 * 1e4:.0f} cm^2")
+    else:
+        print(f"[write] no stability map ({stable.name}); run tools/stability.py -- "
+              "without it the band includes arm poses the trunk will not hold still under")
+    if args.size is None:
+        size, plan, cut = stations.fit_size(
+            lambda z: hanzi.plan(args.char, z, tuple(args.origin)), rm, args.margin)
+        print(f"[write] the largest {args.char} with every stroke whole: {size * 100:.1f} cm")
+    else:
+        plan = hanzi.plan(args.char, args.size, tuple(args.origin))
+        cut = stations.whole_strokes(plan, rm, args.margin)
+        if cut is None:
+            print(f"[write] at {args.size * 100:.0f} cm some stroke does not fit whole; "
+                  "cutting it into stretches")
+            cut = stations.plan_stretches(plan, rm, margin=args.margin)
+    width_full = args.width * plan.size
     if args.max_stretches:
         cut = cut[: args.max_stretches]
     (out / "stretches.json").write_text(json.dumps([
@@ -260,14 +280,16 @@ def main() -> int:
         qpos, base, yaw = state()
         arm.set_state(qpos)
         tip = arm.d.site_xpos[arm.tip]
+        base_site = arm.d.site_xpos[arm.base]
         tip_now[:] = tip
-        force_now[0] = abs(float(sensor.data.force[0].reshape(-1)[2]))
-        found = float(sensor.data.found[0].reshape(-1)[0])
-        force = sensor.data.force[0].reshape(-1)[:3].cpu().numpy()
+        width_now[0] = brush.section_width(tip, base_site)
+        ink_now[:] = brush.ink_point(tip, base_site)
         tgt = target if target is not None else (np.nan, np.nan, np.nan)
         qpos_rows.append(qpos.astype(np.float32))
         rows.append([sim_t, phase, done[k].stroke if 0 <= k < len(done) else -1, k, sample,
-                     *tgt, *tip, found, *force, *base, yaw, residual, *steer.values])
+                     *tgt, *tip, *ink_now[:2], float(width_now[0] > 0), width_now[0],
+                     -min(tip[2], 0.0),
+                     *base, yaw, residual, *steer.values])
 
     def solve(target):
         """IK from the last command; from the reach map's seed if that misses.
@@ -300,20 +322,24 @@ def main() -> int:
         return rm.seed[i, j]
 
     tip_now = np.zeros(3)
-    force_now = np.zeros(1)
+    width_now = np.zeros(1)
+    ink_now = np.zeros(3)
     corr = np.zeros(2)
     zcorr = np.zeros(1)
     dist_map = rm.margin()
 
     def track(true_xy, lead_xy, z, press=None):
         """Solve for `lead_xy` plus the integrated correction; log `true_xy`.
-        With `press`, the height is corrected to hold the normal force."""
+        With `press`, the height is corrected to hold the ink's width."""
         nonlocal corr
-        corr = np.clip(corr + KI * dt * (true_xy - tip_now[:2]), -CORR_MAX, CORR_MAX)
+        # The ink, not the apex, follows the stroke: aim the apex off by how far the
+        # ink sits from it now, and integrate out what that misses.
+        corr = np.clip(corr + KI * dt * (true_xy - ink_now[:2]), -CORR_MAX, CORR_MAX)
+        lead_xy = lead_xy + (tip_now[:2] - ink_now[:2])
         if press is not None:
-            zcorr[0] = np.clip(zcorr[0] + KF * dt * (force_now[0] - press * args.force),
+            zcorr[0] = np.clip(zcorr[0] + KW * dt * (width_now[0] - press * width_full),
                                *ZCORR)
-            z = z + zcorr[0]
+            z = max(z + zcorr[0], -armmod.DEPTH_MAX)
         return solve(np.array([*(lead_xy + corr), z]))
 
     def unfold_to(q_goal, k, sample, target):
@@ -336,6 +362,11 @@ def main() -> int:
         for _ in range(int(ARM_SETTLE_S / dt)):
             step(FOLD if target is None else REACH, k, sample, target, np.nan)
 
+    def settle(k, sample):
+        steer.values = [0.0, 0.0, 0.0]
+        for _ in range(int(SETTLE_S / dt)):
+            step(SETTLE, k, sample, None, np.nan)
+
     def line(frm, to, speed, phase, k, sample):
         n = max(1, int(np.linalg.norm(to - frm) / speed / dt))
         for i in range(1, n + 1):
@@ -344,23 +375,41 @@ def main() -> int:
 
     todo = deque(cut)
     done: list = []
+    replans = dict.fromkeys(range(len(plan.strokes)), 0)
+    shifts: dict[int, np.ndarray] = {}
+
+    def hold_tip(k, sample, seconds):
+        """Let the trunk turn under the arm while the tip stays where it is in the
+        world: with the joints held instead, the tip rides the turning trunk and
+        dipped into the floor (ink on 10 settle steps of run 13)."""
+        qpos, _, _ = state()
+        arm.set_state(qpos)
+        here = arm.tip_pos(q_cmd).copy()
+        for _ in range(int(seconds / dt)):
+            step(SETTLE, k, sample, here, solve(here))
+
+    def untwist(k, sample):
+        if pose_cmd.values[2] != 0.0:
+            pose_cmd.values[2] = 0.0
+            hold_tip(k, sample, TWIST_SETTLE_S)
     folded = True
     while todo:
         c = todo.popleft()
         k = len(done)
         done.append(c)
         s = plan.strokes[c.stroke]
-        # walk (folded: five_foot does not walk with the arm held out)
-        for attempt in range(WALK_ATTEMPTS):
+        p0 = s.xy[c.start]
+        above = np.array([*p0, armmod.HOVER])
+
+        def walk_to(c=c, k=k):
+            """Walk, folded, to the station; then nudge until the stroke fits."""
             t_start = sim_t
             while True:
                 _, base, yaw = state()
                 e = c.base - base[:2]
                 eyaw = _wrap(c.yaw - yaw)
                 dist = float(np.linalg.norm(e))
-                if dist < POS_TOL and abs(eyaw) < YAW_TOL:
-                    break
-                if sim_t - t_start > WALK_TIMEOUT:
+                if (dist < POS_TOL and abs(eyaw) < YAW_TOL) or sim_t - t_start > WALK_TIMEOUT:
                     break
                 v = K_POS * e
                 n = np.linalg.norm(v)
@@ -371,59 +420,149 @@ def main() -> int:
                 if dist < POS_TOL:
                     v[:] = 0.0
                 cy, sy = math.cos(yaw), math.sin(yaw)
-                vb = (cy * v[0] + sy * v[1], -sy * v[0] + cy * v[1])
-                w = float(np.clip(K_YAW * eyaw, -W_MAX, W_MAX))
-                steer.values = [float(vb[0]), float(vb[1]), w]
+                steer.values = [float(cy * v[0] + sy * v[1]), float(-sy * v[0] + cy * v[1]),
+                                float(np.clip(K_YAW * eyaw, -W_MAX, W_MAX))]
                 step(WALK, k, c.start, None, np.nan)
-            steer.values = [0.0, 0.0, 0.0]
-            for _ in range(int(SETTLE_S / dt)):
-                step(SETTLE, k, c.start, None, np.nan)
+            settle(k, c.start)
+            nudge_to(c, k)
+
+        def nudge_to(c, k, s=s, shift=(0.0, 0.0, 0.0)):
+            """Nudge until the stroke fits from where the trunk will be once the arm
+            is out: here, plus the `shift` that unfolding was seen to cause."""
+            sx, sy_, syaw = shift
             _, base, yaw = state()
-            last = stations.reachable_until(s, c.start, c.end, base, yaw, rm,
-                                            RUN_MARGIN, dist_map)
-            if last - c.start >= MIN_SAMPLES or last == c.end:
+            for _ in range(NUDGES):
+                ahead = base[:2] + (sx, sy_)
+                if stations.reachable_until(s, c.start, c.end, ahead, yaw + syaw, rm,
+                                            RUN_MARGIN, dist_map) == c.end:
+                    return
+                e = c.base - ahead
+                eyaw = _wrap(c.yaw - yaw - syaw)
+                t_push = float(np.clip(np.linalg.norm(e) / NUDGE_RATE, *NUDGE_T))
+                cy, sy = math.cos(yaw), math.sin(yaw)
+                v = NUDGE_V * e / max(np.linalg.norm(e), 1e-9)
+                steer.values = [float(cy * v[0] + sy * v[1]), float(-sy * v[0] + cy * v[1]),
+                                float(np.clip(eyaw / t_push, -W_MAX, W_MAX))]
+                for _ in range(int(t_push / dt)):
+                    step(WALK, k, c.start, None, np.nan)
+                settle(k, c.start)
+                _, base, yaw = state()
+
+        # Position, unfold, and check from where the trunk is once the arm is out:
+        # unfolding moves the trunk too, so the check before it is not the one
+        # that counts. If the stroke no longer fits, fold, nudge and unfold again.
+        shift = np.zeros(3)
+        for cycle in range(UNFOLD_TRIES):
+            if folded:
+                if cycle == 0:
+                    walk_to()
+                else:
+                    nudge_to(c, k, shift=tuple(shift))
+                qpos, base, yaw = state()
+                before = np.array([base[0], base[1], yaw])
+                arm.set_state(qpos)
+                q_goal, _ = arm.ik(above, seed_for(p0, base, yaw))
+                # As high as the arm reaches over this point, up to HIGH: near the
+                # edge of the band it does not reach 60 mm up (15.6 mm short at
+                # LF_J3's limit, at 无's fourth stroke).
+                high = above
+                for z in (HIGH, 0.045, 0.03):
+                    q_up, err = arm.ik(np.array([*p0, z]), q_goal)
+                    if err < IK_RETRY:
+                        q_goal, high = q_up, np.array([*p0, z])
+                        break
+                unfold_to(q_goal, k, c.start, high)
+                folded = False
+                start = high
+                # Unfolding to the same pose shoves the trunk the same way each time:
+                # remember by how much, and aim the next nudge that much short.
+                _, b2, y2 = state()
+                moved = np.array([b2[0] - before[0], b2[1] - before[1], _wrap(y2 - before[2])])
+                shift = moved if cycle == 0 else 0.5 * (shift + moved)
+            else:
+                qpos, _, _ = state()
+                arm.set_state(qpos)
+                start = arm.tip_pos(q_cmd)
+            _, base, yaw = state()
+            last = stations.reachable_until(s, c.start, c.end, base, yaw, rm, RUN_MARGIN,
+                                            dist_map)
+            for _ in range(TWIST_TRIES):
+                if last == c.end:
+                    break
+                fits = [d for d in np.arange(-TWIST_MAX, TWIST_MAX + 1e-9, TWIST_STEP)
+                        if stations.reachable_until(s, c.start, c.end, base, yaw + d, rm,
+                                                    RUN_MARGIN, dist_map) == c.end]
+                if not fits:
+                    break
+                d = min(fits, key=abs)
+                # Positive twist turns the trunk positive about z: +2, +6 and -3 deg
+                # turned it +3.6, +5.4 and -2.9 (run 13).
+                pose_cmd.values[2] = float(np.clip(pose_cmd.values[2] + d,
+                                                   -2 * TWIST_MAX, 2 * TWIST_MAX))
+                hold_tip(k, c.start, TWIST_SETTLE_S)
+                _, base, yaw_after = state()
+                turned = _wrap(yaw_after - yaw)
+                print(f"\n[write] stretch {k}: twisted the trunk {math.degrees(d):+.0f} deg "
+                      f"to bring the stroke into reach (turned {math.degrees(turned):+.1f})")
+                yaw = yaw_after
+                last = stations.reachable_until(s, c.start, c.end, base, yaw, rm, RUN_MARGIN,
+                                                dist_map)
+            if last < c.end:
+                # A few millimetres short: move the whole stroke rather than cut it.
+                # A stroke 5 mm off its place in a 10 cm character is a slip of the
+                # hand; a seam in the middle of it is a mistake.
+                shifted = _shift_to_fit(s, c, base, yaw, rm, dist_map)
+                if shifted is not None:
+                    delta, s = shifted
+                    shifts[k] = delta
+                    p0 = s.xy[c.start]
+                    above = np.array([*p0, armmod.HOVER])
+                    last = c.end
+                    print(f"\n[write] stretch {k}: stroke {c.stroke + 1} moved "
+                          f"({delta[0] * 1000:+.0f}, {delta[1] * 1000:+.0f}) mm to fit the reach")
+            if last == c.end or cycle == UNFOLD_TRIES - 1:
                 break
-            print(f"\n[write] stretch {k}: arrived {np.linalg.norm(c.base - base[:2]) * 100:.1f}"
-                  f" cm off; walking again ({attempt + 1}/{WALK_ATTEMPTS})")
+            print(f"\n[write] stretch {k}: the stroke left the reach as the arm unfolded; "
+                  f"folding to reposition ({cycle + 1}/{UNFOLD_TRIES - 1})")
+            line(start, np.array([*start[:2], HIGH]), REACH_SPEED, FOLD, k, c.start)
+            untwist(k, c.start)
+            unfold_to(stow, k, c.start, None)
+            folded = True
+        if last < c.end and last - c.start < MIN_PIECE and replans[c.stroke] < MAX_REPLANS:
+            # Hardly any of the stroke is in reach from here: writing a sliver and
+            # walking for the rest would make a seam for nothing (run 10 wrote 无's
+            # third stroke as six pieces, four of them one sample long). Fold, and
+            # go to a new station for the whole of what is left.
+            replans[c.stroke] += 1
+            rest = stations.cut_stroke(s, c.start, rm, args.margin, stations.YAWS, c.yaw,
+                                       dist_map, tail=False)
+            print(f"\n[write] stretch {k}: out of reach from here; a new station for the "
+                  f"rest of stroke {c.stroke + 1} ({replans[c.stroke]}/{MAX_REPLANS})")
+            c.end = c.start
+            todo.extendleft(reversed(rest))
+            qpos, _, _ = state()
+            arm.set_state(qpos)
+            here = arm.tip_pos(q_cmd)
+            line(here, np.array([*here[:2], HIGH]), REACH_SPEED, FOLD, k, c.start)
+            untwist(k, c.start)
+            unfold_to(stow, k, c.start, None)
+            folded = True
+            continue
         if last < c.end:
-            # Arrived somewhere else: write what is reachable from here, cut the
-            # rest again from where this stops.
+            # Still out of reach: write what is reachable from here, cut the rest
+            # again from where this stops. A seam; reported.
             if last <= c.start:
                 last = c.start + 1
             rest = stations.cut_stroke(s, last, rm, args.margin, stations.YAWS, c.yaw, dist_map)
-            print(f"\n[write] stretch {k}: from where the trunk stopped it reaches sample "
-                  f"{last} of [{c.start}, {c.end}]; replanned the rest as {len(rest)}")
+            print(f"\n[write] stretch {k}: SEAM -- from where the trunk stopped it reaches "
+                  f"sample {last} of [{c.start}, {c.end}]; replanned the rest as {len(rest)}")
             c.end = last
             todo.extendleft(reversed(rest))
 
-        # reach: unfold through HIGH, then down to HOVER above the first point
-        p0 = s.xy[c.start]
-        above = np.array([*p0, armmod.HOVER])
-        _, base, yaw = state()
-        if folded:
-            qpos, _, _ = state()
-            arm.set_state(qpos)
-            q_goal, _ = arm.ik(above, seed_for(p0, base, yaw))
-            # As high as the arm reaches over this point, up to HIGH: near the
-            # edge of the band it does not reach 60 mm up (15.6 mm short at
-            # LF_J3's limit, at 无's fourth stroke).
-            high = above
-            for z in (HIGH, 0.045, 0.03):
-                q_up, err = arm.ik(np.array([*p0, z]), q_goal)
-                if err < IK_RETRY:
-                    q_goal, high = q_up, np.array([*p0, z])
-                    break
-            unfold_to(q_goal, k, c.start, high)
-            folded = False
-            start = high
-        else:
-            qpos, _, _ = state()
-            arm.set_state(qpos)
-            start = arm.tip_pos(q_cmd)
         line(start, above, REACH_SPEED, REACH, k, c.start)
 
         # lower
-        z0 = -s.press[c.start] * args.depth
+        z0 = -s.press[c.start] * width_full
         n = int(LOWER_S / dt)
         corr[:] = 0.0
         zcorr[:] = 0.0
@@ -448,7 +587,7 @@ def main() -> int:
         while u < c.end:
             u = min(float(c.end), u + per_step)
             xy, press = at(u)
-            tgt = np.array([*xy, -press * args.depth])
+            tgt = np.array([*xy, -press * width_full])
             err = track(xy, at(u + lead)[0], tgt[2], press)
             step(WRITE, k, int(u), tgt, err)
             misses = misses + 1 if err > IK_RETRY else 0
@@ -458,7 +597,7 @@ def main() -> int:
                 stop = max(c.start + 1, int(u) - int(lead))
                 rest = stations.cut_stroke(s, stop, rm, args.margin, stations.YAWS, c.yaw,
                                            dist_map)
-                print(f"\n[write] stretch {k}: out of reach at sample {stop} "
+                print(f"\n[write] stretch {k}: SEAM -- out of reach at sample {stop} "
                       f"(trunk drifted); replanned the rest as {len(rest)}")
                 c.end = stop
                 todo.extendleft(reversed(rest))
@@ -466,7 +605,7 @@ def main() -> int:
 
         # lift
         pe = s.xy[c.end]
-        ze = -s.press[c.end] * args.depth
+        ze = -s.press[c.end] * width_full + zcorr[0]
         n = int(LIFT_S / dt)
         for i in range(1, n + 1):
             tgt = np.array([*pe, ze + (armmod.HOVER - ze) * (i / n)])
@@ -484,6 +623,7 @@ def main() -> int:
         if nxt is not None:
             line(np.array([*pe, armmod.HOVER]), np.array([*pe, HIGH]), REACH_SPEED, FOLD, k,
                  c.end)
+            untwist(k, c.end)
             unfold_to(stow, k, c.end, None)
             folded = True
         print(f"[write] stretch {k + 1} done at t={sim_t:.1f}s ({len(todo)} to go)", flush=True)
@@ -494,11 +634,13 @@ def main() -> int:
     (out / "stretches.json").write_text(json.dumps([
         {"stroke": c.stroke, "start": c.start, "end": c.end,
          "base": np.round(c.base, 4).tolist(), "yaw_deg": round(math.degrees(c.yaw), 1),
-         "margin_mm": round(c.margin * 1000, 1)} for c in cut
+         "margin_mm": round(c.margin * 1000, 1),
+         "shift_mm": np.round(shifts.get(k, np.zeros(2)) * 1000, 1).tolist()}
+        for k, c in enumerate(cut)
     ], indent=1))
 
     cols = ["t", "phase", "stroke", "stretch", "sample", "tx", "ty", "tz", "px", "py", "pz",
-            "contact", "fx", "fy", "fz", "bx", "by", "bz", "byaw", "ik_residual",
+            "ix", "iy", "contact", "width", "depth", "bx", "by", "bz", "byaw", "ik_residual",
             "cmd_vx", "cmd_vy", "cmd_wz"]
     log = np.asarray(rows, dtype=np.float64)
     np.savez(out / "log.npz", log=log, columns=np.array(cols), phases=np.array(PHASES),
@@ -519,18 +661,26 @@ def main() -> int:
 def _report(log: np.ndarray, cols: list[str]) -> None:
     c = {n: i for i, n in enumerate(cols)}
     w = log[log[:, c["phase"]] == WRITE]
-    err = np.linalg.norm(w[:, [c["px"], c["py"]]] - w[:, [c["tx"], c["ty"]]], axis=1)
+    err = np.linalg.norm(w[:, [c["ix"], c["iy"]]] - w[:, [c["tx"], c["ty"]]], axis=1)
     touching = w[:, c["contact"]] > 0
     print(f"[write] {log[-1, c['t']]:.1f} s simulated, {len(w)} writing steps")
-    print(f"  tip xy error while writing: median {np.median(err) * 1000:.1f} mm, "
+    print(f"  ink centre to stroke while writing: median {np.median(err) * 1000:.1f} mm, "
           f"p95 {np.percentile(err, 95) * 1000:.1f} mm, max {err.max() * 1000:.1f} mm")
-    print(f"  brush on the floor while writing: {touching.mean() * 100:.0f}% of steps")
+    print(f"  hair in the floor while writing: {touching.mean() * 100:.0f}% of steps")
     if touching.any():
-        fz = np.abs(w[touching, c["fz"]])
-        print(f"  normal force while touching: median {np.median(fz):.2f} N, "
-              f"p95 {np.percentile(fz, 95):.2f} N")
+        wd = w[touching, c["width"]] * 1000
+        print(f"  ink width while writing: median {np.median(wd):.1f} mm, "
+              f"p5-p95 {np.percentile(wd, 5):.1f}-{np.percentile(wd, 95):.1f} mm, "
+              f"max depth {w[:, c['depth']].max() * 1000:.1f} mm")
     off = log[~np.isin(log[:, c["phase"]], (WRITE, LOWER, LIFT))]
-    print(f"  brush on the floor outside lower/write: {(off[:, c['contact']] > 0).sum()} steps")
+    print(f"  hair in the floor outside lower/write/lift: {(off[:, c['contact']] > 0).sum()} "
+          "steps")
+    for k in np.unique(w[:, c["stretch"]]).astype(int):
+        b = w[w[:, c["stretch"]] == k]
+        drift = np.linalg.norm(b[-1, [c["bx"], c["by"]]] - b[0, [c["bx"], c["by"]]])
+        turn = math.degrees(_wrap(b[-1, c["byaw"]] - b[0, c["byaw"]]))
+        print(f"  stroke {int(b[0, c['stroke']]) + 1}: trunk moved {drift * 1000:.1f} mm and "
+              f"turned {turn:+.1f} deg while the arm wrote")
     print(f"  IK residual while writing: max {np.nanmax(w[:, c['ik_residual']]) * 1000:.1f} mm")
 
 
@@ -555,10 +705,10 @@ def _topview(out: Path, plan, cut, log, rm, cols=None) -> None:
         ci = {n: i for i, n in enumerate(cols)}
         touch = log[:, ci["contact"]] > 0
         inked = np.isin(log[:, ci["phase"]], (LOWER, WRITE, LIFT))
-        for sel, colour, label in ((touch & inked, "k", "brush on the floor"),
-                                   (touch & ~inked, "r", "stray contact")):
+        for sel, colour, label in ((touch & inked, "k", "hair in the floor"),
+                                   (touch & ~inked, "r", "stray ink")):
             if sel.any():
-                ax.scatter(-log[sel, ci["py"]], log[sel, ci["px"]], s=4, c=colour, zorder=4,
+                ax.scatter(-log[sel, ci["iy"]], log[sel, ci["ix"]], s=4, c=colour, zorder=4,
                            label=label)
         ax.plot(-log[:, ci["by"]], log[:, ci["bx"]], color="#888", lw=0.8, zorder=2,
                 label="trunk")
@@ -566,7 +716,8 @@ def _topview(out: Path, plan, cut, log, rm, cols=None) -> None:
     ax.set_aspect("equal")
     ax.set_xlabel("-y (m)")
     ax.set_ylabel("x (m)")
-    ax.set_title(f"U+{ord(plan.character):04X}: plan (tan), stretches (colour) and stations (triangles)")
+    ax.set_title(f"U+{ord(plan.character):04X}, {plan.size * 100:.1f} cm: plan (tan), "
+                 "strokes (colour), stations (triangles)")
     ax.grid(alpha=0.3)
     fig.savefig(out / "topview.png", dpi=100, bbox_inches="tight")
     plt.close(fig)

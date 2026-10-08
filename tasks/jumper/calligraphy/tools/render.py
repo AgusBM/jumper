@@ -10,7 +10,7 @@ Writes into the run's directory:
     top.mp4, low.mp4    the overhead and the low shot, real time, ink drawn as it is laid
                         (--no-ink for clean plates to composite onto)
     wu.gif              the overhead shot sped up, small, for the README
-    ink.json            every mark: time, floor xy, force, planned press, width, and its
+    ink.json            every mark: time, floor xy, depth, planned press, width, and its
                         pixels in each shot; the shots' intrinsics and poses
     ink.svg             the ink from above at the character's scale
 
@@ -264,8 +264,6 @@ def main() -> int:
     ap.add_argument("--no-ink", action="store_true", help="clean plates, no ink drawn")
     ap.add_argument("--gif-speed", type=float, default=6.0)
     ap.add_argument("--no-gif", action="store_true")
-    ap.add_argument("--force", type=float, default=1.0,
-                    help="the --force write.py ran with, N (the width's reference)")
     ap.add_argument("--still", type=float, nargs="+", metavar="T",
                     help="write <shot>_<T>.png at these times (s) and stop")
     ap.add_argument("--check", action="store_true",
@@ -281,7 +279,7 @@ def main() -> int:
         # upward bias of the low shot that is under 1 mm on the floor.
         return 0 if worst < 2.5 else 1
 
-    ms = ink.marks(rp.log, rp.plan, args.force)
+    ms = ink.marks(rp.log, rp.plan)
     if args.still:
         from PIL import Image
 
@@ -296,7 +294,7 @@ def main() -> int:
                 print(f"[render] wrote {path}")
             r.close()
         return 0
-    data = ink.to_json(ms, rp.plan, list(shots.values()), args.force)
+    data = ink.to_json(ms, rp.plan, list(shots.values()))
     (args.run / "ink.json").write_text(json.dumps(data))
     (args.run / "ink.svg").write_text(ink.to_svg(ms, rp.plan))
     print(f"[render] {len(ms)} marks, {sum(len(m.t) for m in ms)} points -> ink.json, ink.svg")

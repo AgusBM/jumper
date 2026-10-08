@@ -86,7 +86,7 @@ def _grow(pts: np.ndarray, inside: np.ndarray, dist: np.ndarray, rm: ReachMap):
 
 
 def cut_stroke(s, start: int, rm: ReachMap, margin: float, yaws, yaw_prev: float,
-               dist: np.ndarray | None = None) -> list[Stretch]:
+               dist: np.ndarray | None = None, tail: bool = True) -> list[Stretch]:
     """Stretches covering `s` from sample `start` to its end."""
     if dist is None:
         dist = rm.margin()
@@ -113,7 +113,7 @@ def cut_stroke(s, start: int, rm: ReachMap, margin: float, yaws, yaw_prev: float
                 best = (count, yaw, b_idx, mgn)
         count, yaw, b_idx, mgn = best
         left = len(sub) - i - count
-        if 0 < left <= TAIL:
+        if tail and 0 < left <= TAIL:
             # A short tail would cost a walk and a seam for a few millimetres of
             # ink: take it into this stretch at half the margin if that fits.
             R = _rot(yaw)
@@ -166,3 +166,58 @@ def reachable_until(s, start: int, end: int, base: np.ndarray, yaw: float, rm: R
     ok[ok] = dist[ij[ok, 0], ij[ok, 1]] >= margin
     bad = np.flatnonzero(~ok)
     return end if len(bad) == 0 else start + int(bad[0]) - 1
+
+
+#: Headings tried when every stroke has to be written from one place: finer than
+#: `YAWS`, since a stroke that just fails at one heading often fits at the next.
+FIT_YAWS = tuple(np.deg2rad(a) for a in range(-60, 61, 10))
+
+
+def whole_strokes(plan: Plan, rm: ReachMap, margin: float,
+                  yaws: tuple[float, ...] = FIT_YAWS) -> list[Stretch] | None:
+    """One stretch per stroke -- each stroke written by the arm alone, the trunk
+    still -- or None if some stroke does not fit the band whole."""
+    dist = rm.margin()
+    out: list[Stretch] = []
+    yaw_prev = 0.0
+    for s in plan.strokes:
+        try:
+            # No half-margin tail here: a stroke written whole needs the full
+            # margin all along it, or the tail is where it fails -- 无's fourth
+            # stroke fitted with 5 mm at its hook and split there four times.
+            cut = cut_stroke(s, 0, rm, margin, yaws, yaw_prev, dist, tail=False)
+        except ValueError:
+            return None
+        if len(cut) != 1:
+            return None
+        out += cut
+        yaw_prev = cut[0].yaw
+    return out
+
+
+def fit_size(make_plan, rm: ReachMap, margin: float, lo: float = 0.05, hi: float = 0.40,
+             tol: float = 0.0025, yaws: tuple[float, ...] = FIT_YAWS):
+    """The largest character size at which every stroke is written whole.
+
+    A stroke cut into stretches is written in pieces with the robot walking in
+    between, and every seam shows: the trunk never stops exactly where it was
+    sent, and the second piece starts a few millimetres off the first. So the
+    longest stroke sets the size -- it is fitted whole into the band -- and the rest
+    of the character is scaled with it. `make_plan(size)` builds the plan.
+    Returns (size, plan, stretches).
+    """
+    best = None
+    if whole_strokes(make_plan(lo), rm, margin, yaws) is None:
+        raise ValueError(f"not even a {lo * 100:.0f} cm character fits stroke by stroke")
+    while hi - lo > tol:
+        mid = (lo + hi) / 2
+        plan = make_plan(mid)
+        cut = whole_strokes(plan, rm, margin, yaws)
+        if cut is None:
+            hi = mid
+        else:
+            lo, best = mid, (mid, plan, cut)
+    if best is None:
+        plan = make_plan(lo)
+        best = (lo, plan, whole_strokes(plan, rm, margin, yaws))
+    return best

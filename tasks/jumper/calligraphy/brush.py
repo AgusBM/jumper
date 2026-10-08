@@ -1,149 +1,118 @@
-"""The brush in the carried claw: a handle along the palm, a soft tip that touches only the floor.
+"""The brush in the carried claw: a thick handle gripped by the closed claw, and a
+black cone of hair that may sink into the floor.
 
 ## Where it sits
 
 In `LF_palm_link`'s frame the palm runs along +y to y = 0.144 m, the fixed jaw is
-on +z and the finger closes from -z, so the claw's mouth is the strip around
-z = 0. The handle lies in that strip along +y and runs past the end of the claw,
-which puts the tip `TIP_Y` out along the palm -- 56 mm beyond the claw -- where it
-reaches the floor without the palm doing so first. (Extents measured on the V1.6
-visual meshes in that frame: palm y [-0.015, 0.144], z [-0.030, 0.025]; finger at
-0.0 rad z [-0.031, 0.004].)
+on +z and the finger closes from -z. With the claw shut (`FINGER_HOLD`, the
+finger's 0.10 rad limit) the jaws stand 13.6 mm apart across the mouth (y 0.06 to
+0.12): the palm's face at z >= +3.4 mm, the finger's at z <= -10.2 mm, measured on
+the V1.6 visual meshes. So the handle is 13 mm thick and centred between them
+(`MOUTH_Z`): the claw closes **on** it, rather than standing open around an 8 mm
+stick as it did before.
 
-The brush is **welded to the palm**, not held by the finger's friction. The finger
-is closed onto the handle for the picture (`FINGER_HOLD`), but a grip that could
-slip would turn every stroke into a measurement of the grip; that is
-`jumper.five_foot`'s claw business, and it is not what this is about.
+The brush is **welded to the palm**, not held by the finger's friction: a grip
+that could slip would turn every stroke into a measurement of the grip.
 
-## What touches what
+## The hair, and why nothing collides
 
-Only the tip collides, and only with the terrain: contype = the terrain bit,
-conaffinity = 0, so no leg, no trunk and no other part of the arm can meet it,
-and the handle does not collide at all. The shared collision scheme zeroes every
-geom it does not name (`disable_other_geoms`), so the tip has to be added to it
--- `with_brush` -- or it silently passes through the floor.
-
-The tip is **soft** (`TIP_SOLREF`): a time constant several times the feet's
-0.008 s, so it sinks a few millimetres under a light press the way bristles
-splay. That depth is what the ink pass reads as width; with the feet's stiff
-contact it would be a fraction of a millimetre whatever the press.
+The hair is a cone, apex down, black. It does not collide with anything: when it
+was a colliding tip, pressing it into the floor pushed back on the arm, the
+trunk turned under it and the stroke wandered (无's long middle stroke turned the
+trunk 48 deg with a fixed-depth press). Now the apex is simply put **below** the
+floor, the way wet hair splays, and the ink is the cone's section at the floor:
+`section_width`. Deeper is wider; nothing pushes the robot.
 """
 
 from __future__ import annotations
 
-import dataclasses
-from typing import Any
+import math
 
 import mujoco
+import numpy as np
 
 PALM_BODY = "LF_palm_link"
 BRUSH_BODY = "brush"
-TIP_GEOM = "brush_tip"
-TIP_SITE = "brush_tip"
+TIP_SITE = "brush_tip"      # the cone's apex
+BASE_SITE = "brush_base"    # the centre of the cone's base, where the hair meets the handle
 
-#: Handle, in the palm's frame: a capsule from HANDLE_Y[0] to HANDLE_Y[1] along +y,
-#: centred in the mouth at (x, z) = (0, MOUTH_Z).
-MOUTH_Z = -0.004
-HANDLE_Y = (0.030, 0.165)
-HANDLE_RADIUS = 0.004
-#: The bristles: a tapered tuft from the end of the handle to the tip.
-TUFT_Y = (0.165, 0.196)
-TUFT_RADIUS = 0.0055
-#: The colliding tip: a sphere whose far side is the brush's point.
-TIP_RADIUS = 0.004
-TIP_Y = 0.200 - TIP_RADIUS
+#: The handle, in the palm's frame: a capsule along +y, centred between the jaws.
+MOUTH_Z = -0.0034
+HANDLE_Y = (0.030, 0.160)
+HANDLE_RADIUS = 0.0065
+#: The hair: a cone from its base at CONE_Y to its apex CONE_LENGTH further out.
+CONE_Y = 0.160
+CONE_LENGTH = 0.026
+CONE_RADIUS = 0.014
+TIP_Y = CONE_Y + CONE_LENGTH
+#: tan of the cone's half-angle: the section's radius per metre of hair below the floor.
+CONE_SLOPE = CONE_RADIUS / CONE_LENGTH
 
-#: About a bamboo brush of this size: ~6 g of handle, ~2 g of hair.
-HANDLE_MASS = 0.006
-TIP_MASS = 0.002
+#: A bamboo handle and wet hair: ~10 g and ~5 g.
+HANDLE_MASS = 0.010
+HAIR_MASS = 0.005
 
-#: Soft and well damped: bristles do not bounce.
-TIP_SOLREF = (0.04, 1.0)
-TIP_SOLIMP = (0.9, 0.95, 0.004)
-#: Wet hair on stone slides; the feet's 1.0 would make the tip stick and drag the arm.
-TIP_FRICTION = (0.3, 0.005, 0.0001)
+#: Finger target with the handle in the mouth, rad: the claw shut, at the finger's limit.
+FINGER_HOLD = 0.10
 
-#: The terrain's collision bit (`tasks/jumper/common/constants.py`: the terrain is
-#: contype = conaffinity = 1).
-TERRAIN_BIT = 1
-
-#: Finger target with the handle in the mouth, rad: closed down onto an 8 mm
-#: handle. Between GRIPPER_OPEN (-0.65) and GRIPPER_CLOSED (0.10).
-FINGER_HOLD = -0.15
+CONE_SEGMENTS = 24
 
 
 def add_brush(spec: mujoco.MjSpec) -> mujoco.MjSpec:
     palm = spec.body(PALM_BODY)
     if palm is None:
         raise KeyError(f"{PALM_BODY} is not in the robot's spec")
+    ring = [(CONE_RADIUS * math.cos(a), 0.0, CONE_RADIUS * math.sin(a))
+            for a in np.linspace(0, 2 * math.pi, CONE_SEGMENTS, endpoint=False)]
+    mesh = spec.add_mesh(name="brush_hair")
+    # In the brush body's frame: base ring at y = 0, apex at y = CONE_LENGTH.
+    mesh.uservert = [c for v in [*ring, (0.0, CONE_LENGTH, 0.0)] for c in v]
     body = palm.add_body(name=BRUSH_BODY)
     body.add_geom(
         name="brush_handle", type=mujoco.mjtGeom.mjGEOM_CAPSULE,
         fromto=[0, HANDLE_Y[0], MOUTH_Z, 0, HANDLE_Y[1], MOUTH_Z],
         size=[HANDLE_RADIUS, 0, 0], mass=HANDLE_MASS,
-        contype=0, conaffinity=0, group=2, rgba=[0.55, 0.40, 0.22, 1],
+        contype=0, conaffinity=0, group=2, rgba=[0.62, 0.45, 0.24, 1],
     )
     body.add_geom(
-        name="brush_tuft", type=mujoco.mjtGeom.mjGEOM_CAPSULE,
-        fromto=[0, TUFT_Y[0], MOUTH_Z, 0, TUFT_Y[1], MOUTH_Z],
-        size=[TUFT_RADIUS, 0, 0], mass=0.0,
-        contype=0, conaffinity=0, group=2, rgba=[0.10, 0.10, 0.10, 1],
+        name="brush_hair", type=mujoco.mjtGeom.mjGEOM_MESH, meshname="brush_hair",
+        pos=[0, CONE_Y, MOUTH_Z], mass=HAIR_MASS,
+        contype=0, conaffinity=0, group=2, rgba=[0.04, 0.04, 0.04, 1],
     )
-    body.add_geom(
-        name=TIP_GEOM, type=mujoco.mjtGeom.mjGEOM_SPHERE,
-        pos=[0, TIP_Y, MOUTH_Z], size=[TIP_RADIUS, 0, 0], mass=TIP_MASS,
-        group=2, rgba=[0.05, 0.05, 0.05, 1],
-    )
-    body.add_site(name=TIP_SITE, pos=[0, TIP_Y + TIP_RADIUS, MOUTH_Z], size=[0.002, 0, 0],
-                  group=4)
+    body.add_site(name=TIP_SITE, pos=[0, TIP_Y, MOUTH_Z], size=[0.002, 0, 0], group=4)
+    body.add_site(name=BASE_SITE, pos=[0, CONE_Y, MOUTH_Z], size=[0.002, 0, 0], group=4)
     return spec
 
 
-def _ahead(table: Any, value: Any) -> dict[str, Any]:
-    """`table` with the tip's entry first: the scheme takes the first pattern that
-    matches, and behind a catch-all ".*" the tip would get a leg's settings."""
-    pattern = f"^{TIP_GEOM}$"
-    if not isinstance(table, dict):
-        return {pattern: value, ".*": table}
-    return {pattern: value} | table
+def section_width(apex: np.ndarray, base: np.ndarray) -> float:
+    """Width of the ink the cone leaves: twice its radius where its axis meets the
+    floor, 0 while the apex is above it. The section of a tilted cone is an
+    ellipse; this is its width across the stroke's direction when the brush leans
+    along the stroke, and within the ellipse's spread otherwise -- close enough for
+    ink, and the same rule the renderer and the ink export use."""
+    if apex[2] >= 0.0:
+        return 0.0
+    axis = base - apex
+    if axis[2] <= 1e-9:
+        return 2.0 * CONE_RADIUS  # lying flat: the whole cone is down
+    t = min(1.0, -apex[2] / axis[2])  # fraction of the way from apex to base
+    return 2.0 * CONE_SLOPE * t * float(np.linalg.norm(axis))
 
 
-def with_brush(base):
-    """`base` (an mjlab `CollisionCfg`) with the tip in it: terrain only, soft."""
-    def patched(field: str, value: Any) -> Any:
-        current = getattr(base, field)
-        # An optional patch left as None means "the XML's value" for every geom;
-        # a dict for the tip alone then needs only the tip's entry.
-        return {f"^{TIP_GEOM}$": value} if current is None else _ahead(current, value)
-
-    return dataclasses.replace(
-        base,
-        geom_names_expr=tuple(base.geom_names_expr) + (f"^{TIP_GEOM}$",),
-        contype=patched("contype", TERRAIN_BIT),
-        conaffinity=patched("conaffinity", 0),
-        condim=patched("condim", 3),
-        priority=patched("priority", 2),
-        friction=patched("friction", TIP_FRICTION),
-        solref=patched("solref", TIP_SOLREF),
-        solimp=patched("solimp", TIP_SOLIMP),
-    )
+def ink_point(apex: np.ndarray, base: np.ndarray) -> np.ndarray:
+    """Where the ink is centred: the cone's axis at the floor, or under the apex
+    while the apex is above it. A leaning brush sunk 10 mm puts this about a
+    centimetre from the point under its apex, so this -- not the apex -- is what
+    has to follow the stroke."""
+    axis = base - apex
+    if apex[2] >= 0.0 or axis[2] <= 1e-9:
+        return np.array([apex[0], apex[1], 0.0])
+    t = min(1.0, -apex[2] / axis[2])
+    return apex + t * axis
 
 
 def apply(cfg) -> None:
-    """Put the brush on `jumper.five_foot`'s robot in `cfg`, and a sensor on its tip."""
-    from mjlab.sensor import ContactMatch, ContactSensorCfg
-
+    """Put the brush on `jumper.five_foot`'s robot in `cfg`."""
     robot = cfg.scene.entities["robot"]
     base_spec_fn = robot.spec_fn
     robot.spec_fn = lambda: add_brush(base_spec_fn())
-    robot.collisions = tuple(with_brush(c) for c in robot.collisions)
-    cfg.scene.sensors = (cfg.scene.sensors or ()) + (
-        ContactSensorCfg(
-            name="brush_ground",
-            primary=ContactMatch(mode="geom", pattern=TIP_GEOM, entity="robot"),
-            secondary=ContactMatch(mode="body", pattern="terrain"),
-            fields=("found", "force"),
-            reduce="netforce",
-            num_slots=1,
-        ),
-    )

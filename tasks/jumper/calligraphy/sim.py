@@ -1,0 +1,104 @@
+"""The simulation the tools drive: jumper.five_foot's replay environment with the
+brush, its shipped policy, and the two commands taken over from the operator.
+
+Shared by `tools/write.py` (one robot, writing) and `tools/stability.py` (many,
+holding the arm out), so the two measure the same robot under the same policy.
+Heavy imports happen inside `build`, after the backend is chosen.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+REPO = Path(__file__).resolve().parents[3]
+CHECKPOINT = REPO / "tasks/jumper/five_foot/out/example/model_86600.pt"
+TASK = "jumper.five_foot"
+
+
+class Operator:
+    """Stands in for the pad on one command term: returns `values` every step.
+
+    The replay config hands `twist` (vx, vy, wz) and `body_pose` (pitch, roll,
+    twist) to an operator; with no pad they fall back to random sampling. Putting
+    this in its place makes them exactly what the caller sets, for every robot.
+    """
+
+    def __init__(self, n: int = 3):
+        self.values = [0.0] * n
+
+    def command(self, term, stamp=None):
+        return list(self.values)
+
+    def task_control(self, name, stamp=None):
+        return None
+
+
+@dataclass
+class Sim:
+    env: object
+    wrapped: object
+    policy: object
+    robot: object
+    joint_ids: list[int]
+    steer: Operator
+    pose: Operator
+    dt: float
+
+
+def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT) -> Sim:
+    import warnings
+
+    warnings.filterwarnings("ignore")
+    from dataclasses import asdict
+
+    from mjrl.backend.resolve import resolve
+    from mjrl.backend.select import use_backend
+
+    use_backend(resolve(backend="native", device="cpu", num_envs=num_envs))
+
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.rl import RslRlVecEnvWrapper
+    from mjlab.rl.runner import MjlabOnPolicyRunner
+
+    import tasks
+    from tasks.jumper.five_foot.claw import ARM_JOINTS
+
+    from . import arm as armmod
+    from . import brush
+
+    cfg = tasks.load_env_cfg(TASK, play=True)
+    cfg.scene.num_envs = num_envs
+    brush.apply(cfg)
+    cfg.commands["body_pose"].rel_neutral_envs = 1.0
+    env = ManagerBasedRlEnv(cfg=cfg, device="cpu")
+    agent = tasks.load_agent_cfg(TASK)
+    wrapped = RslRlVecEnvWrapper(env, clip_actions=agent.clip_actions)
+    runner_cls = tasks.load_runner_cls(TASK) or MjlabOnPolicyRunner
+    runner = runner_cls(wrapped, asdict(agent), device="cpu")
+    runner.load(str(checkpoint), load_cfg={"actor": True}, strict=True, map_location="cpu")
+    steer, pose = Operator(), Operator()
+    env.command_manager.get_term("twist")._operator = steer
+    env.command_manager.get_term("body_pose")._operator = pose
+    robot = env.scene["robot"]
+    joint_ids = [robot.joint_names.index(j) for j in (*ARM_JOINTS, armmod.FINGER_JOINT)]
+    return Sim(env, wrapped, runner.get_inference_policy(device="cpu"), robot, joint_ids,
+               steer, pose, env.step_dt)
+
+
+def standing_qpos(mjm) -> np.ndarray:
+    """Standing at the origin, level, legs at HOME, the brush in the shut claw --
+    fixed, not read from the simulation, whose reset randomises the joints."""
+    from tasks.jumper.common.constants import HOME, STAND_Z
+
+    from . import arm as armmod
+    from . import brush
+
+    q = mjm.qpos0.astype(np.float64).copy()
+    q[0:3] = (0.0, 0.0, STAND_Z)
+    q[3:7] = (1.0, 0.0, 0.0, 0.0)
+    for name, value in {**HOME, armmod.FINGER_JOINT: brush.FINGER_HOLD}.items():
+        q[mjm.jnt_qposadr[mjm.joint(armmod.PREFIX + name).id]] = value
+    return q

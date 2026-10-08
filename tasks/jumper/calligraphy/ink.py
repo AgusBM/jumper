@@ -6,29 +6,18 @@ of points.
 
 ## What counts as ink
 
-A control step leaves ink when the brush's tip is in contact with the floor
-**and** the arm is lowering, writing or lifting. Contact anywhere else would be the
-brush brushing the floor on the way somewhere; `write.py` reports it as stray
-contact (none in the measured runs) and it is not painted here, so a fault shows
-in the report rather than being quietly drawn.
+The hair is a cone that may go into the floor (`brush.py`). A control step leaves
+ink when the cone's apex is below the floor **and** the arm is lowering, writing
+or lifting; the ink is centred where the cone's axis meets the floor and is as
+wide as the cone's section there (`brush.ink_point`, `brush.section_width`, logged
+by `write.py` as `ix`, `iy`, `width`). Anywhere else it would be the brush
+dipping on the way somewhere; `write.py` reports that as stray ink and it is not
+painted here, so a fault shows in the report rather than being quietly drawn.
 
 Consecutive inked steps of one stretch form a **mark**: one continuous trace of
-the brush. A stroke is one mark when nothing interrupted it, and more where the
-robot had to walk in the middle of it (a seam) or the tip left the floor for
-longer than `GAP_S`. Shorter gaps are bridged: the simulated tip is a rigid ball
-that skips for a step or two (contact on 90-96% of writing steps), where wet hair
-would stay on the stone -- unbridged, 无 came out as 71 marks instead of 8. A
-bridged step is drawn at the minimum width.
-
-## Width
-
-The brush in the simulation is an 8 mm sphere; a calligraphy brush splays to
-several times that when pressed. So the width is not measured but derived:
-`width = width_full * clip(force / force_full, MIN_FRACTION, MAX_FRACTION)`,
-where `force_full` is the press `write.py` held at full press (`--force`) and
-`width_full` defaults to 6.5% of the character's size -- Make Me a Hanzi's own
-strokes are 60-90 units of its 1024-unit em. Every point carries the force and the
-planned press as well, so the ink pass can choose its own rule.
+the brush -- one per stroke, when every stroke is written whole. Gaps shorter
+than `GAP_S` inside a stretch are bridged at the smallest width, so a tip that
+rises out of the floor for a step does not break a stroke in two.
 """
 
 from __future__ import annotations
@@ -40,8 +29,6 @@ import numpy as np
 
 #: Phases of `write.py` in which a contact is ink (lower, write, lift).
 INK_PHASES = ("lower", "write", "lift")
-WIDTH_OF_SIZE = 0.065
-MIN_FRACTION, MAX_FRACTION = 0.25, 1.3
 #: Gaps in contact up to this long, inside one writing stretch, do not break a mark.
 GAP_S = 0.1
 #: Ink sits this far above the floor in the preview, so it does not z-fight.
@@ -54,9 +41,9 @@ class Mark:
     stretch: int
     t: np.ndarray        # (n,) s
     xyz: np.ndarray      # (n, 3) m, the tip
-    force: np.ndarray    # (n,) N, normal
-    press: np.ndarray    # (n,) planned press, 0..1
-    width: np.ndarray    # (n,) m
+    depth: np.ndarray    # (n,) m, how far the apex is below the floor
+    press: np.ndarray    # (n,) planned press, a fraction of the full width
+    width: np.ndarray    # (n,) m, the cone's section at the floor
 
 
 class Log:
@@ -72,9 +59,7 @@ class Log:
         return self.rows[:, self.col[name]]
 
 
-def marks(log: Log, plan, force_full: float, width_full: float | None = None) -> list[Mark]:
-    if width_full is None:
-        width_full = WIDTH_OF_SIZE * plan.size
+def marks(log: Log, plan) -> list[Mark]:
     ink_ids = [log.phases.index(p) for p in INK_PHASES]
     in_phase = np.isin(log["phase"], ink_ids)
     inked = (log["contact"] > 0) & in_phase
@@ -97,25 +82,27 @@ def marks(log: Log, plan, force_full: float, width_full: float | None = None) ->
         sel = slice(i, j + 1)
         stroke = int(log["stroke"][i])
         samples = np.clip(log["sample"][sel].astype(int), 0, len(plan.strokes[stroke].xy) - 1)
-        force = np.abs(log["fz"][sel])
-        width = width_full * np.clip(force / force_full, MIN_FRACTION, MAX_FRACTION)
+        width = log["width"][sel].copy()
+        bridged = width <= 0
+        if bridged.any() and (~bridged).any():
+            width[bridged] = width[~bridged].min()
         out.append(Mark(
             stroke=stroke, stretch=int(stretch[i]), t=log["t"][sel].copy(),
-            xyz=np.column_stack([log["px"][sel], log["py"][sel], log["pz"][sel]]),
-            force=force, press=plan.strokes[stroke].press[samples], width=width,
+            xyz=np.column_stack([log["ix"][sel], log["iy"][sel], np.zeros(j + 1 - i)]),
+            depth=log["depth"][sel].copy(), press=plan.strokes[stroke].press[samples],
+            width=width,
         ))
         i = j + 1
     return out
 
 
-def to_json(ms: list[Mark], plan, shots, force_full: float) -> dict:
+def to_json(ms: list[Mark], plan, shots) -> dict:
     out = {
         "character": plan.character,
         "size_m": plan.size,
         "frame": "world metres; character up = +x, right = -y; floor at z = 0",
-        "force_full_N": force_full,
-        "width_rule": f"width = {WIDTH_OF_SIZE} * size * clip(force / force_full, "
-                      f"{MIN_FRACTION}, {MAX_FRACTION})",
+        "width_rule": "the brush's hair is a cone (radius 14 mm over 26 mm) sunk into "
+                      "the floor; width = its section where its axis meets the floor",
         "cameras": [s.to_json() for s in shots],
         "marks": [],
     }
@@ -125,7 +112,7 @@ def to_json(ms: list[Mark], plan, shots, force_full: float) -> dict:
             "stroke": m.stroke, "stretch": m.stretch,
             "t": np.round(m.t, 3).tolist(),
             "xy": np.round(m.xyz[:, :2], 5).tolist(),
-            "force_N": np.round(m.force, 3).tolist(),
+            "depth_m": np.round(m.depth, 5).tolist(),
             "press": np.round(m.press, 3).tolist(),
             "width_m": np.round(m.width, 5).tolist(),
             "pixels": {s.name: np.round(s.project(floor), 2).tolist() for s in shots},
