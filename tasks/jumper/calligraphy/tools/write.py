@@ -813,13 +813,17 @@ def main() -> int:
                 todo.extendleft(reversed(rest))
                 break
 
-        # lift
+        # lift: straight up from where the apex is. Not by `track`, which aims the
+        # brush's axis at the stroke's end: lifted, the axis meets the floor further
+        # off, and aiming it there carried the apex towards the trunk until the
+        # elbow went 10 mm into the shell (跳跳, tt4, a stroke near the robot).
         pe = s.xy[c.end]
         ze = -s.press[c.end] * width_full / WIDTH_PER_DEPTH + zcorr[0]
+        a0 = tip_now[:2].copy()
         n = int(LIFT_S / dt)
         for i in range(1, n + 1):
             tgt = np.array([*pe, ze + (armmod.HOVER - ze) * (i / n)])
-            err = track(pe, pe, tgt[2])
+            err = solve(np.array([*a0, tgt[2]]), on_floor=True)
             step(LIFT, k, c.end, tgt, err)
 
         # fold, unless the next stretch can be written from where the trunk is
