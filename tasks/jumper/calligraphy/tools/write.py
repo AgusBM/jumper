@@ -165,7 +165,8 @@ IK_RETRY = 0.002                  # m
 #: right (-y) of its edge, facing it, and dances -- (pitch, roll, twist) in degrees
 #: held for so many seconds; pitch + is nose down. A twist from one side to the
 #: other takes 1.3-2 s at the command's 30 deg/s.
-OUTRO_STAND_OFF = 0.22             # m
+#: 0.22 put the folded claw and the brush over the second character's ink.
+OUTRO_STAND_OFF = 0.32             # m
 OUTRO_DANCE = (
     (0.0, 0.0, 20.0, 1.6), (0.0, 0.0, -20.0, 1.8), (0.0, 0.0, 20.0, 1.8),
     (0.0, 0.0, -20.0, 1.8), (0.0, 10.0, 0.0, 1.2), (0.0, -10.0, 0.0, 1.2),
@@ -521,6 +522,19 @@ def main() -> int:
         for _ in range(int(OUTRO_HOLD_S / dt)):
             step(OUTRO, k, -1, None, np.nan)
 
+    def clear_high(xy):
+        """The height the brush is lifted to over `xy` before the arm folds: HIGH, or
+        lower where lifting it that high puts the arm into the trunk -- over a
+        stroke near the robot it raised the elbow and put the forearm and palm
+        9-10 mm into the shell (跳跳, tt2)."""
+        qpos, _, _ = state()
+        arm.set_state(qpos)
+        for z in (HIGH, 0.045, 0.03):
+            q, err = arm.ik(np.array([*xy, z]), q_cmd)
+            if err < IK_RETRY and not arm.self_contact(q, 0.0)[0]:
+                return z
+        return armmod.HOVER
+
     def settle(k, sample):
         steer.values = [0.0, 0.0, 0.0]
         for _ in range(int(SETTLE_S / dt)):
@@ -712,7 +726,8 @@ def main() -> int:
                 break
             print(f"\n[write] stretch {k}: the stroke left the reach as the arm unfolded; "
                   f"folding to reposition ({cycle + 1}/{UNFOLD_TRIES - 1})")
-            line(start, np.array([*start[:2], HIGH]), REACH_SPEED, FOLD, k, c.start)
+            line(start, np.array([*start[:2], clear_high(start[:2])]), REACH_SPEED, FOLD, k,
+                 c.start)
             untwist(k, c.start)
             unfold_to(stow, k, c.start, None)
             folded = True
@@ -731,7 +746,8 @@ def main() -> int:
             qpos, _, _ = state()
             arm.set_state(qpos)
             here = arm.tip_pos(q_cmd)
-            line(here, np.array([*here[:2], HIGH]), REACH_SPEED, FOLD, k, c.start)
+            line(here, np.array([*here[:2], clear_high(here[:2])]), REACH_SPEED, FOLD, k,
+                 c.start)
             untwist(k, c.start)
             unfold_to(stow, k, c.start, None)
             folded = True
@@ -815,7 +831,8 @@ def main() -> int:
                 nxt.base, nxt.yaw = base[:2].copy(), yaw
                 nxt = None
         if nxt is not None:
-            line(np.array([*pe, armmod.HOVER]), np.array([*pe, HIGH]), REACH_SPEED, FOLD, k,
+            line(np.array([*pe, armmod.HOVER]), np.array([*pe, clear_high(pe)]), REACH_SPEED,
+                 FOLD, k,
                  c.end)
             untwist(k, c.end)
             unfold_to(stow, k, c.end, None)
@@ -828,7 +845,8 @@ def main() -> int:
         qpos, _, _ = state()
         arm.set_state(qpos)
         here = arm.tip_pos(q_cmd)
-        line(here, np.array([*here[:2], HIGH]), REACH_SPEED, FOLD, len(done) - 1, -1)
+        line(here, np.array([*here[:2], clear_high(here[:2])]), REACH_SPEED, FOLD,
+             len(done) - 1, -1)
     if args.outro:
         if not folded:
             untwist(len(done) - 1, -1)

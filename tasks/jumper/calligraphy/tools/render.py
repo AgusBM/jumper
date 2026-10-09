@@ -297,14 +297,16 @@ def check(rp: Replay, shots) -> float:
 
 #: The film: following the character being written from behind the robot's
 #: shoulder, then pulling back to the whole text and the robot beside it.
-FILM_FOLLOW = {"distance": 0.80, "elevation": -55.0, "azimuth": 12.0}
+#: Steep, so the robot in front of the character does not hide it: at -55 deg,
+#: from behind its shoulder, the trunk covered the stroke being written.
+FILM_FOLLOW = {"distance": 0.78, "elevation": -72.0, "azimuth": 0.0}
 FILM_REVEAL_ELEVATION = -70.0
 #: Seconds of simulation the camera takes to settle on a new target (both ways in
 #: time, so it moves before a cut rather than lagging after it).
 FILM_TAU = 1.5
 FILM_HOLD = 5.0                   # s on the finished text at the end
 #: Where the robot stands for the outro, beside the text: `write.OUTRO_STAND_OFF`.
-OUTRO_STAND_OFF = 0.22
+OUTRO_STAND_OFF = 0.32
 
 
 def _fit_distance(x_extent: float, y_extent: float, shot: cameras.Shot) -> float:
