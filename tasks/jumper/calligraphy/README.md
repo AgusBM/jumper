@@ -24,8 +24,8 @@ Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
 | `wu.gif` | 4 | the overhead shot at 6x, 480x360, for the README |
 | `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
 
-> **Status (2026-10-09): 无 at 13.6 cm, every stroke whole, the feet still.** The
-> brush is a thick handle gripped by the shut claw and a black cone of hair that
+> **Status (2026-10-09): 无 at 12.2 cm, every stroke whole, the feet still.** The
+> brush is a thick handle the claw closes onto and a black cone of hair that
 > sinks into the floor. five_foot's shipped policy walks; while the arm is out its
 > last action is held, so the legs stand like a statue -- see
 > [Where it stands](#where-it-stands).
@@ -44,7 +44,7 @@ is no `env_cfg.py` or `rl_cfg.py`, so the registry does not see the directory.
 |---|---|
 | `hanzi.py` | a character's medians (Make Me a Hanzi) -> stroke trajectories on the floor, with a press profile |
 | `data/` | one verbatim `graphics.txt` entry per character, and the Arphic Public License they are under |
-| `brush.py` | the brush: a 13 mm handle in the shut claw, a black cone of hair that may sink into the floor; the ink's width is the cone's section there |
+| `brush.py` | the brush: a 13 mm handle the claw closes onto, a black cone of hair that may sink into the floor; the ink's width is the cone's section there |
 | `sim.py` | the environment, policy and the two commands taken over from the operator, shared by the tools |
 | `tools/stability.py` | where in the reach band the policy holds the trunk still with the arm out |
 | `env_cfg.py`, `rl_cfg.py` | the task `jumper.calligraphy`: five_foot's config with the brush, the writing command and `hold_position` |
@@ -170,7 +170,14 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
   takes, of the paths 5 mm off the floor, the one whose claw and brush come within
   5 mm of the trunk and the other legs least, then of the arm's own upper arm
   (whose convex hull overlaps the claw's near the elbow where the meshes do not).
-  Two runs: neither touches the trunk or another leg (self2-self3).
+  Two runs: neither touches the trunk or another leg (self2-self3). The forearm
+  is checked too, and so is the point the brush is lifted to over a stroke's start:
+  near the trunk, lifting it 45 mm raised the elbow into it (grip3).
+- The finger closes onto the handle, not through it (`brush.FINGER_HOLD`, -0.025;
+  shut, its tip went 6.4 mm into the handle). Opened, the finger hangs lower and
+  meets the floor in more writing poses: 无 is 12.2 cm, from 13.6. Two runs
+  (grip5-grip6): 0 seams, ink p95 2.8 mm, nothing of the arm or brush in the
+  trunk or another leg.
 - With the brush down, the IK never takes a solution on the arm's other branch:
   with LF_J3 at its limit it once did, and swung the hair 83 mm up and 100 mm off
   the stroke mid-stroke.

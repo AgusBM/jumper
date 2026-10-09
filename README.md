@@ -30,10 +30,10 @@ claw and writes **无** (*wú*, "nothing"), stroke by stroke, in stroke order.
 - **The legs stand like a statue while the arm writes.** Jumper's five-legged gait
   (`jumper.five_foot`) walks; once it stops, its last command to the legs is held
   until the arm has folded again, so the feet do not shuffle as the arm swings out.
-- **Measured:** 无 at 13.6 cm, all four strokes whole in every run; the ink is
-  0.7 mm from the stroke (median, p95 4.2–4.6 mm), the body moves 0.1 mm while a
-  stroke is written, the feet at most 2.3 mm while the arm unfolds, and no ink
-  falls outside the strokes.
+- **Measured:** 无 at 12.2 cm, all four strokes whole in every run; the ink is
+  0.7 mm from the stroke (median, p95 2.8 mm), the body moves 0.1 mm while a
+  stroke is written, the feet at most 2.3 mm while the arm unfolds, the arm and
+  the brush never pass through the body, and no ink falls outside the strokes.
 
 Everything — the planner, the controller, the renders and the stroke data for
 painting the ink in post-production — is in

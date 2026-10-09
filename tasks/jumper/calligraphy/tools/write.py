@@ -607,10 +607,12 @@ def main() -> int:
                 # As high as the arm reaches over this point, up to HIGH: near the
                 # edge of the band it does not reach 60 mm up (15.6 mm short at
                 # LF_J3's limit, at 无's fourth stroke).
+                # And clear of the trunk: near it, lifting the brush that high
+                # raised the elbow into the trunk (grip3: the forearm 6.7 mm in).
                 high = above
                 for z in (HIGH, 0.045, 0.03):
                     q_up, err = arm.ik(np.array([*p0, z]), q_goal)
-                    if err < IK_RETRY:
+                    if err < IK_RETRY and not arm.self_contact(q_up)[0]:
                         q_goal, high = q_up, np.array([*p0, z])
                         break
                 unfold_to(q_goal, k, c.start, high)

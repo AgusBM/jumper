@@ -4,12 +4,21 @@ black cone of hair that may sink into the floor.
 ## Where it sits
 
 In `LF_palm_link`'s frame the palm runs along +y to y = 0.144 m, the fixed jaw is
-on +z and the finger closes from -z. With the claw shut (`FINGER_HOLD`, the
-finger's 0.10 rad limit) the jaws stand 13.6 mm apart across the mouth (y 0.06 to
-0.12): the palm's face at z >= +3.4 mm, the finger's at z <= -10.2 mm, measured on
-the V1.6 visual meshes. So the handle is 13 mm thick and centred between them
-(`MOUTH_Z`): the claw closes **on** it, rather than standing open around an 8 mm
-stick as it did before.
+on +z and the finger closes from -z. The handle is 13 mm thick and lies along the
+fixed jaw's channel (`MOUTH_Z`), and the finger closes **onto** it. Measured on
+the V1.6 visual meshes along the handle's whole length, and the largest 无 the
+reach band then holds (`write.py`, the legs held, 2026-10-09):
+
+    FINGER_HOLD   finger against the handle   无
+       0.10       6.4 mm into it               13.6 cm   the finger's limit; the
+                                                         claw closed through the brush
+       0.00       3.3 mm into it               13.6 cm
+      -0.025      0.8 mm into it -- touching   12.2 cm
+      -0.05       1.7 mm clear                 10.6 cm
+
+Opening it costs size because the finger's tip hangs lower and meets the floor in
+more of the writing poses. The handle starts at y = 55 mm, inside the mouth: from
+30 mm it ran 2.4 mm into the finger's hinge at any opening.
 
 The brush is **welded to the palm**, not held by the finger's friction: a grip
 that could slip would turn every stroke into a measurement of the grip.
@@ -40,7 +49,7 @@ BASE_SITE = "brush_base"    # the centre of the cone's base, where the hair meet
 
 #: The handle, in the palm's frame: a capsule along +y, centred between the jaws.
 MOUTH_Z = -0.0034
-HANDLE_Y = (0.030, 0.160)
+HANDLE_Y = (0.055, 0.160)
 HANDLE_RADIUS = 0.0065
 #: The hair: a cone from its base at CONE_Y to its apex CONE_LENGTH further out.
 CONE_Y = 0.160
@@ -54,8 +63,8 @@ CONE_SLOPE = CONE_RADIUS / CONE_LENGTH
 HANDLE_MASS = 0.010
 HAIR_MASS = 0.005
 
-#: Finger target with the handle in the mouth, rad: the claw shut, at the finger's limit.
-FINGER_HOLD = 0.10
+#: Finger target with the handle in the mouth, rad: closed onto the handle, not through it.
+FINGER_HOLD = -0.025
 
 CONE_SEGMENTS = 24
 

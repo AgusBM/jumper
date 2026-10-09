@@ -130,13 +130,20 @@ class Arm:
                      ("meshcol", "meshcol1", "meshcol2", "meshcol3", "meshcol4", "meshcol5"))]
         claw = [g for g in robot if name(g).startswith(("LF_palm", "LF_finger"))]
         claw += [model.geom(PREFIX + n).id for n in brush.GEOMS]
-        rest = [g for g in robot if g not in claw and name(g) != "LF_forearm_link"]
+        forearm = [g for g in robot if name(g) == "LF_forearm_link"]
+        rest = [g for g in robot if g not in claw and g not in forearm]
+        own_arm = ("LF_shoulder", "LF_upper_arm")
+        # The forearm against the trunk and the other legs too: lifting the brush
+        # high over a stroke near the trunk raised the elbow and put the forearm
+        # 6.7 mm into it, by the camera (grip3, 2026-10-09). Not against the upper
+        # arm it is jointed to.
         self._pairs = [(a, b) for a in claw for b in rest]
+        self._pairs += [(a, b) for a in forearm for b in rest
+                        if not name(b).startswith(own_arm)]
         # The arm's own shoulder and upper arm, apart from the trunk and the other
         # legs: their collision hulls are convex hulls of a concave claw and arm,
         # so near the elbow they read as touching where the meshes do not.
-        self._own = np.array([name(b).startswith(("LF_shoulder", "LF_upper_arm"))
-                              for _, b in self._pairs])
+        self._own = np.array([name(b).startswith(own_arm) for _, b in self._pairs])
         self._rbound = model.geom_rbound
         self._fromto = np.zeros(6)
 
