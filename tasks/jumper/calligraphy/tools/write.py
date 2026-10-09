@@ -70,14 +70,25 @@ K_POS, V_MAX = 1.5, 0.12          # 1/s, m/s
 K_YAW, W_MAX = 2.0, 0.6           # 1/s, rad/s
 #: Below this the policy stands rather than steps; a correction is sent at least this fast.
 V_MIN = 0.08
-#: After a walk, the stroke has to be this far inside the band from where the trunk
-#: actually stopped. The walk gets within 5 mm, but stopping, the trunk sways back
-#: 5-7 mm with the last step (run 8, 2026-10-08), and walking again repeats it. So
-#: the rest is closed by nudges -- a short push of the velocity command towards the
-#: station, then a settle and a new measurement -- up to NUDGES times; only then is
-#: the stroke split (a seam, reported).
-RUN_MARGIN = 0.003                # m
+#: After a walk, the stroke has to fit from where the trunk actually stopped, with
+#: room to spare for the unfold still to come. The walk gets within 5 mm, but
+#: stopping, the trunk sways back 5-7 mm with the last step (run 8, 2026-10-08), and
+#: walking again repeats it. So the rest is closed by nudges -- a short push of the
+#: velocity command towards the station, then a settle and a new measurement -- up
+#: to NUDGES times, until the stroke is NUDGE_MARGIN inside the band. With a
+#: fine-tuned jumper.calligraphy policy unfolding then moves the trunk 3.6-5.7 mm
+#: (median, three runs of 53, 318 and 53 unfolds, 2026-10-09, native:cpu on the
+#: RTX 3090 machine); nudging to 3 mm, as before, left nearly every stroke short
+#: after it, and each was folded, nudged and unfolded again until it was cut into
+#: one-sample pieces (10-11 seams for 4 strokes, 100 in one run).
 NUDGES = 5
+NUDGE_MARGIN = 0.007              # m (--nudge-margin)
+#: Once the arm is out, a stroke may run this far past the band's edge: the edge is
+#: where the trunk was measured to hold still (`tools/stability.py`) or where the palm
+#: limit falls, neither a wall, and the fine-tuned policy holds the trunk to 1.6-7.5
+#: mm while the arm writes (same runs). Past it the IK still has to reach, or the
+#: stretch is cut there while writing (MISS_STEPS).
+OVERREACH = 0.003                 # m (--overreach)
 #: A stroke that is out of reach by a little after unfolding is moved, whole, by
 #: up to this much -- the smallest shift that fits -- instead of being cut.
 SHIFT_MAX = 0.005                 # m
@@ -146,7 +157,7 @@ KW = 3.0                          # m of depth per m of width error per s
 ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 
 
-def _shift_to_fit(s, c, base, yaw, rm, dist):
+def _shift_to_fit(s, c, base, yaw, rm, dist, margin):
     """The smallest shift of stroke `s` (within SHIFT_MAX) that brings samples
     [c.start, c.end] into reach from the trunk at `base`, `yaw`; or None."""
     from tasks.jumper.calligraphy import hanzi, stations
@@ -156,7 +167,7 @@ def _shift_to_fit(s, c, base, yaw, rm, dist):
                      key=lambda d: math.hypot(*d))
     for d in offsets:
         moved = hanzi.Stroke(s.index, s.xy + np.asarray(d), s.press)
-        if stations.reachable_until(moved, c.start, c.end, base, yaw, rm, RUN_MARGIN,
+        if stations.reachable_until(moved, c.start, c.end, base, yaw, rm, margin,
                                     dist) == c.end:
             return np.asarray(d), moved
     return None
@@ -194,6 +205,10 @@ def main() -> int:
     ap.add_argument("--plan-only", action="store_true",
                     help="cut the plan into stretches, draw them, and stop")
     ap.add_argument("--max-stretches", type=int, default=None)
+    ap.add_argument("--nudge-margin", type=float, default=NUDGE_MARGIN,
+                    help="nudge until the stroke fits with this much to spare, m")
+    ap.add_argument("--overreach", type=float, default=OVERREACH,
+                    help="once the arm is out, how far past the band a stroke may run, m")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 
@@ -337,6 +352,11 @@ def main() -> int:
     corr = np.zeros(2)
     zcorr = np.zeros(1)
     dist_map = rm.margin()
+    # Signed: inside the band, the distance to its edge; outside, minus the distance
+    # to it. Checked against -overreach once the arm is out.
+    from scipy.ndimage import distance_transform_edt
+
+    dist_run = dist_map - distance_transform_edt(~rm.ok) * rm.cell
 
     def track(true_xy, lead_xy, z, press=None):
         """Solve for `lead_xy` plus the integrated correction; log `true_xy`.
@@ -444,7 +464,7 @@ def main() -> int:
             for _ in range(NUDGES):
                 ahead = base[:2] + (sx, sy_)
                 if stations.reachable_until(s, c.start, c.end, ahead, yaw + syaw, rm,
-                                            RUN_MARGIN, dist_map) == c.end:
+                                            args.nudge_margin, dist_map) == c.end:
                     return
                 e = c.base - ahead
                 eyaw = _wrap(c.yaw - yaw - syaw)
@@ -494,14 +514,14 @@ def main() -> int:
                 arm.set_state(qpos)
                 start = arm.tip_pos(q_cmd)
             _, base, yaw = state()
-            last = stations.reachable_until(s, c.start, c.end, base, yaw, rm, RUN_MARGIN,
-                                            dist_map)
+            last = stations.reachable_until(s, c.start, c.end, base, yaw, rm,
+                                            -args.overreach, dist_run)
             for _ in range(TWIST_TRIES):
                 if last == c.end:
                     break
                 fits = [d for d in np.arange(-TWIST_MAX, TWIST_MAX + 1e-9, TWIST_STEP)
                         if stations.reachable_until(s, c.start, c.end, base, yaw + d, rm,
-                                                    RUN_MARGIN, dist_map) == c.end]
+                                                    -args.overreach, dist_run) == c.end]
                 if not fits:
                     break
                 d = min(fits, key=abs)
@@ -515,13 +535,13 @@ def main() -> int:
                 print(f"\n[write] stretch {k}: twisted the trunk {math.degrees(d):+.0f} deg "
                       f"to bring the stroke into reach (turned {math.degrees(turned):+.1f})")
                 yaw = yaw_after
-                last = stations.reachable_until(s, c.start, c.end, base, yaw, rm, RUN_MARGIN,
-                                                dist_map)
+                last = stations.reachable_until(s, c.start, c.end, base, yaw, rm,
+                                                -args.overreach, dist_run)
             if last < c.end:
                 # A few millimetres short: move the whole stroke rather than cut it.
                 # A stroke 5 mm off its place in a 10 cm character is a slip of the
                 # hand; a seam in the middle of it is a mistake.
-                shifted = _shift_to_fit(s, c, base, yaw, rm, dist_map)
+                shifted = _shift_to_fit(s, c, base, yaw, rm, dist_run, -args.overreach)
                 if shifted is not None:
                     delta, s = shifted
                     shifts[k] = delta
@@ -558,11 +578,17 @@ def main() -> int:
             unfold_to(stow, k, c.start, None)
             folded = True
             continue
+        if last < c.end and last - c.start < MIN_PIECE:
+            # Out of new stations and still hardly any of it in reach: cutting here
+            # writes a sliver, and the next station did the same -- final3 wrote one
+            # stroke as a hundred one-sample pieces (2026-10-09). Write on instead,
+            # and let the IK end the stretch where it really stops reaching.
+            print(f"\n[write] stretch {k}: only to sample {last} of [{c.start}, {c.end}] "
+                  "inside the band; writing on as far as the arm reaches")
+            last = c.end
         if last < c.end:
             # Still out of reach: write what is reachable from here, cut the rest
             # again from where this stops. A seam; reported.
-            if last <= c.start:
-                last = c.start + 1
             rest = stations.cut_stroke(s, last, rm, args.margin, stations.YAWS, c.yaw, dist_map)
             print(f"\n[write] stretch {k}: SEAM -- from where the trunk stopped it reaches "
                   f"sample {last} of [{c.start}, {c.end}]; replanned the rest as {len(rest)}")
