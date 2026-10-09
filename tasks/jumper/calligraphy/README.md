@@ -98,7 +98,7 @@ from a randomised pose, so runs differ; two of them:
 | | simulated | stretches | tip to stroke, median / p95 / max | brush down while writing | force, median |
 |---|---|---|---|---|---|
 | run 6 | 86 s | 7 | 1.1 / 2.9 / 5.8 mm | 96% | 1.13 N |
-| run 7 (the README's gif) | 103 s | 8 | 1.2 / 6.4 / 17.4 mm | 90% | 1.20 N |
+| run 7 | 103 s | 8 | 1.2 / 6.4 / 17.4 mm | 90% | 1.20 N |
 
 In both the brush touched the floor nowhere outside the strokes. Each extra
 stretch is a replan: the trunk stopped too far from its station (run 7: three
@@ -128,8 +128,9 @@ stones, draws the ink as flat wet patches and lights the scene with a low sun
 slow on a CPU: run 7 (103 s) took 78 min on this 4-core container for both shots
 and the gif -- 6614 frames, ~0.7 s each, OSMesa on all four cores.
 
-`docs/media/calligraphy-wu.gif` in the repository's README is `wu.gif` of the run
-the README quotes.
+`docs/media/calligraphy-wu.gif` in the repository's README is `wu.gif` of a run
+with the legs held, the claw closed onto the brush and the arm folding around
+the robot (2026-10-10, rendered on an RTX 3090 with EGL).
 
 ## Not done yet
 
