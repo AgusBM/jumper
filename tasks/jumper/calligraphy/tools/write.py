@@ -68,20 +68,29 @@ PHASES = ("walk", "settle", "reach", "lower", "write", "lift", "fold", "done")
 #: Walking: P gains and limits on the velocity command.
 K_POS, V_MAX = 1.5, 0.12          # 1/s, m/s
 K_YAW, W_MAX = 2.0, 0.6           # 1/s, rad/s
-#: Below this the policy stands rather than steps; a correction is sent at least this fast.
-V_MIN = 0.08
+#: Below this the policy stands rather than steps; a correction is sent at least this
+#: fast. Closed-loop walks of 1-8 cm with five_foot's shipped policy ended a median
+#: 11.2 mm off at 0.08 and 5.7 mm at 0.15 (16 walks each, 2026-10-09, native:cpu).
+V_MIN = 0.15
+#: A walk shorter than this is not walked: the trunk first backs off to this far from
+#: the goal and comes in again. Shipped policy, V_MIN 0.15, same probe: 10 mm walks
+#: ended 5.8-17.4 mm off, 40 and 80 mm walks 2.2-6.6 mm.
+APPROACH_MIN = 0.04               # m
 #: After a walk, the stroke has to fit from where the trunk actually stopped, with
-#: room to spare for the unfold still to come. The walk gets within 5 mm, but
-#: stopping, the trunk sways back 5-7 mm with the last step (run 8, 2026-10-08), and
-#: walking again repeats it. So the rest is closed by nudges -- a short push of the
-#: velocity command towards the station, then a settle and a new measurement -- up
-#: to NUDGES times, until the stroke is NUDGE_MARGIN inside the band. With a
-#: fine-tuned jumper.calligraphy policy unfolding then moves the trunk 3.6-5.7 mm
-#: (median, three runs of 53, 318 and 53 unfolds, 2026-10-09, native:cpu on the
-#: RTX 3090 machine); nudging to 3 mm, as before, left nearly every stroke short
-#: after it, and each was folded, nudged and unfolded again until it was cut into
+#: room to spare for the unfold still to come: NUDGE_MARGIN inside the band. If it
+#: does not, the trunk walks in again (backing off first, APPROACH_MIN), up to
+#: NUDGES times. With a fine-tuned jumper.calligraphy policy unfolding moves the
+#: trunk 3.6-5.7 mm (median, three runs of 53, 318 and 53 unfolds, 2026-10-09,
+#: native:cpu on the RTX 3090 machine); a 3 mm margin left nearly every stroke short
+#: after it, and each was folded and unfolded again until it was cut into
 #: one-sample pieces (10-11 seams for 4 strokes, 100 in one run).
-NUDGES = 5
+#:
+#: These used to be short pushes of the velocity command -- 0.07 m/s for 0.12-0.8 s
+#: -- and the fine-tuned policy does not move for them: 0.3-2.1 mm for pushes asked
+#: to move 8-105 mm, 0.6-5 mm at 0.10 m/s (five_foot's shipped one: 4-100 mm). It
+#: stands for any command under ~0.15 m/s, so it does not walk here at all -- see
+#: `--walk-checkpoint`.
+NUDGES = 4
 NUDGE_MARGIN = 0.007              # m (--nudge-margin)
 #: Once the arm is out, a stroke may run this far past the band's edge: the edge is
 #: where the trunk was measured to hold still (`tools/stability.py`) or where the palm
@@ -120,9 +129,6 @@ MAX_REPLANS = 2
 #: (final5, 2026-10-09, a fine-tuned policy). A bounded run with a stroke missing
 #: says what is wrong; a crawl hides it.
 MAX_PIECES = 4
-NUDGE_V = 0.07                    # m/s commanded
-NUDGE_RATE = 0.035                # m/s the trunk actually moves under it (assumed)
-NUDGE_T = (0.12, 0.8)             # s, the shortest and longest push
 #: While writing, this many consecutive IK misses end the stretch where it is.
 MISS_STEPS = 3
 #: The arm comes to rest for this long after unfolding or folding; going straight
@@ -204,6 +210,11 @@ def main() -> int:
                     help="how far inside the reach band every written point must be, m")
     ap.add_argument("--checkpoint", type=Path,
                     default=REPO / "tasks/jumper/five_foot/out/example/model_86600.pt")
+    ap.add_argument("--walk-checkpoint", type=Path,
+                    default=REPO / "tasks/jumper/five_foot/out/example/model_86600.pt",
+                    help="the policy that walks, the arm folded; --checkpoint does the rest. "
+                         "A jumper.calligraphy policy stands for any command under ~0.15 "
+                         "m/s, so five_foot's shipped one walks by default")
     ap.add_argument("--palm-x-min", type=float, default=None,
                     help="how far ahead of the trunk the palm must stay, m (arm.PALM_X_MIN, "
                          "where the shipped policy holds still; a jumper.calligraphy policy "
@@ -229,8 +240,11 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     # ── The environment: five_foot's replay config, plus the brush ───────────
-    sm = sim.build(1, args.checkpoint)
+    walker = None if args.walk_checkpoint.resolve() == args.checkpoint.resolve() \
+        else args.walk_checkpoint
+    sm = sim.build(1, args.checkpoint, walker)
     env, wrapped, policy, robot, jids = sm.env, sm.wrapped, sm.policy, sm.robot, sm.joint_ids
+    walk_policy = sm.walk_policy
     steer, pose_cmd, dt = sm.steer, sm.pose, sm.dt
 
     # ── Where the arm can write, and the cut ─────────────────────────────────
@@ -303,7 +317,8 @@ def main() -> int:
         hold = torch.tensor([[*q_cmd, brush.FINGER_HOLD]], dtype=torch.float32)
         robot.set_joint_position_target(hold, joint_ids=jids)
         with torch.inference_mode():
-            obs, _, dones, _ = wrapped.step(policy(obs))
+            act = walk_policy if phase in (WALK, SETTLE) else policy
+            obs, _, dones, _ = wrapped.step(act(obs))
         sim_t += dt
         if bool(dones[0]):
             raise RuntimeError(f"the episode ended at t={sim_t:.2f}s in {PHASES[phase]} "
@@ -443,52 +458,57 @@ def main() -> int:
         p0 = s.xy[c.start]
         above = np.array([*p0, armmod.HOVER])
 
+        def walk(goal, goal_yaw, k, sample):
+            """Walk, folded, to `goal`, `goal_yaw`; a short walk backs off first."""
+            _, base, _ = state()
+            e = goal - base[:2]
+            if np.linalg.norm(e) < APPROACH_MIN:
+                away = -e / np.linalg.norm(e) if np.linalg.norm(e) > 1e-4 else \
+                    -np.array([math.cos(goal_yaw), math.sin(goal_yaw)])
+                legs = [goal + APPROACH_MIN * away, goal]
+            else:
+                legs = [goal]
+            for leg in legs:
+                t_start = sim_t
+                while True:
+                    _, base, yaw = state()
+                    e = leg - base[:2]
+                    eyaw = _wrap(goal_yaw - yaw)
+                    dist = float(np.linalg.norm(e))
+                    if (dist < POS_TOL and abs(eyaw) < YAW_TOL) or \
+                            sim_t - t_start > WALK_TIMEOUT:
+                        break
+                    v = K_POS * e
+                    n = np.linalg.norm(v)
+                    if n > V_MAX:
+                        v *= V_MAX / n
+                    elif n < V_MIN:
+                        v *= V_MIN / max(n, 1e-9)
+                    if dist < POS_TOL:
+                        v[:] = 0.0
+                    cy, sy = math.cos(yaw), math.sin(yaw)
+                    steer.values = [float(cy * v[0] + sy * v[1]),
+                                    float(-sy * v[0] + cy * v[1]),
+                                    float(np.clip(K_YAW * eyaw, -W_MAX, W_MAX))]
+                    step(WALK, k, sample, None, np.nan)
+            settle(k, sample)
+
         def walk_to(c=c, k=k):
-            """Walk, folded, to the station; then nudge until the stroke fits."""
-            t_start = sim_t
-            while True:
-                _, base, yaw = state()
-                e = c.base - base[:2]
-                eyaw = _wrap(c.yaw - yaw)
-                dist = float(np.linalg.norm(e))
-                if (dist < POS_TOL and abs(eyaw) < YAW_TOL) or sim_t - t_start > WALK_TIMEOUT:
-                    break
-                v = K_POS * e
-                n = np.linalg.norm(v)
-                if n > V_MAX:
-                    v *= V_MAX / n
-                elif n < V_MIN:
-                    v *= V_MIN / max(n, 1e-9)
-                if dist < POS_TOL:
-                    v[:] = 0.0
-                cy, sy = math.cos(yaw), math.sin(yaw)
-                steer.values = [float(cy * v[0] + sy * v[1]), float(-sy * v[0] + cy * v[1]),
-                                float(np.clip(K_YAW * eyaw, -W_MAX, W_MAX))]
-                step(WALK, k, c.start, None, np.nan)
-            settle(k, c.start)
+            """Walk, folded, to the station; then walk in again until the stroke fits."""
+            walk(c.base, c.yaw, k, c.start)
             nudge_to(c, k)
 
         def nudge_to(c, k, s=s, shift=(0.0, 0.0, 0.0)):
-            """Nudge until the stroke fits from where the trunk will be once the arm
-            is out: here, plus the `shift` that unfolding was seen to cause."""
+            """Walk in again until the stroke fits from where the trunk will be once
+            the arm is out: here, plus the `shift` that unfolding was seen to cause."""
             sx, sy_, syaw = shift
-            _, base, yaw = state()
             for _ in range(NUDGES):
+                _, base, yaw = state()
                 ahead = base[:2] + (sx, sy_)
                 if stations.reachable_until(s, c.start, c.end, ahead, yaw + syaw, rm,
                                             args.nudge_margin, dist_map) == c.end:
                     return
-                e = c.base - ahead
-                eyaw = _wrap(c.yaw - yaw - syaw)
-                t_push = float(np.clip(np.linalg.norm(e) / NUDGE_RATE, *NUDGE_T))
-                cy, sy = math.cos(yaw), math.sin(yaw)
-                v = NUDGE_V * e / max(np.linalg.norm(e), 1e-9)
-                steer.values = [float(cy * v[0] + sy * v[1]), float(-sy * v[0] + cy * v[1]),
-                                float(np.clip(eyaw / t_push, -W_MAX, W_MAX))]
-                for _ in range(int(t_push / dt)):
-                    step(WALK, k, c.start, None, np.nan)
-                settle(k, c.start)
-                _, base, yaw = state()
+                walk(c.base - np.array([sx, sy_]), _wrap(c.yaw - syaw), k, c.start)
 
         # Position, unfold, and check from where the trunk is once the arm is out:
         # unfolding moves the trunk too, so the check before it is not the one

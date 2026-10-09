@@ -49,9 +49,15 @@ class Sim:
     steer: Operator
     pose: Operator
     dt: float
+    #: The policy that walks; `policy` unless `build` was given a `walk_checkpoint`.
+    walk_policy: object = None
 
 
-def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT) -> Sim:
+def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT,
+          walk_checkpoint: Path | None = None) -> Sim:
+    """With `walk_checkpoint`, a second policy for walking: both are five_foot's
+    network, a stateless MLP that carries its own observation normaliser, so the
+    caller may switch between them from one step to the next."""
     import warnings
 
     warnings.filterwarnings("ignore")
@@ -80,13 +86,20 @@ def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT) -> Sim:
     runner_cls = tasks.load_runner_cls(TASK) or MjlabOnPolicyRunner
     runner = runner_cls(wrapped, asdict(agent), device="cpu")
     runner.load(str(checkpoint), load_cfg={"actor": True}, strict=True, map_location="cpu")
+    walk_policy = None
+    if walk_checkpoint is not None:
+        walker = runner_cls(wrapped, asdict(agent), device="cpu")
+        walker.load(str(walk_checkpoint), load_cfg={"actor": True}, strict=True,
+                    map_location="cpu")
+        walk_policy = walker.get_inference_policy(device="cpu")
     steer, pose = Operator(), Operator()
     env.command_manager.get_term("twist")._operator = steer
     env.command_manager.get_term("body_pose")._operator = pose
     robot = env.scene["robot"]
     joint_ids = [robot.joint_names.index(j) for j in (*ARM_JOINTS, armmod.FINGER_JOINT)]
-    return Sim(env, wrapped, runner.get_inference_policy(device="cpu"), robot, joint_ids,
-               steer, pose, env.step_dt)
+    policy = runner.get_inference_policy(device="cpu")
+    return Sim(env, wrapped, policy, robot, joint_ids, steer, pose, env.step_dt,
+               walk_policy or policy)
 
 
 def standing_qpos(mjm) -> np.ndarray:
