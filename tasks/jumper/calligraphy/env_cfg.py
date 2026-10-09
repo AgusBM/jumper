@@ -18,8 +18,7 @@ five_foot's, and what this file changes is listed below and nothing else:
 | the carried arm | held in `LF_GRASP_BOX` all episode | out about half the time: unfolded, moved over the writing band at writing speed, folded back (`mdp/writing.py`) |
 | the commands while the arm is out | sampled | velocity zero, body level -- what `tools/write.py` sends |
 | reward | -- | `hold_position`: stay where the trunk stood when it became still |
-| `feet_still` weight | -2.0 | -10.0: a foot slid along the floor while standing costs five times as much |
-| `feet_planted` gate | command under 0.10 m/s | under 0.05, the gate every other standing term uses |
+| reward | -- | `feet_slide`: a foot dragged along the floor while standing |
 
 Observations are untouched -- the arm's joints were already observed (five_foot
 observes the carried joints), and the writing command is not -- so the shipped
@@ -66,8 +65,24 @@ measured in replay (2026-10-09, native:cpu):
   and walking only half-scored, and with `hold_position` added the first round
   settled on standing. At 0.05 that band is gone.
 
-Both are guesses at the cause, checked by replaying the result: the slide per
-unfold (`feet moved`) and a push of 0.07-0.10 m/s that moves the robot.
+Both were guesses at the cause, and the replay of that round (`model_92598`,
+`feet_still` -10.0 and `feet_planted` gated at 0.05) says neither was it:
+
+- it still ignores 0.07-0.10 m/s (0.5-4.5 mm for pushes asked to move 8-150 mm),
+  so the `feet_planted` gate is put back;
+- its feet still slide as the arm unfolds, 14-55 mm per foot with **no lift-off at
+  all**, and the same with MuJoCo's elliptic cone at impratio 10 -- not contact
+  creep but the policy dragging them.
+
+**The reason is the shape of the charge, not its size.** `feet_still` charges foot
+speed while standing whether the foot is down or up, and `feet_planted` pays each
+foot that is down; so moving a foot by a step costs what dragging it does, plus the
+`feet_planted` it loses while lifted. Dragging was always the cheaper way, at -2.0
+and at -10.0 alike. `feet_still` is back at five_foot's -2.0, and `feet_slide`
+(`mdp/writing.py`) charges the drag alone: -20.0 on summed speed in contact,
+so the ~0.037 m/s of the unfold costs 0.74 per second against `hold_position`'s
+4.0, and stepping the same foot costs `feet_still`'s 0.07 and a fifth of
+`feet_planted` for the time it is up.
 """
 
 from __future__ import annotations
@@ -79,7 +94,7 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 
 from . import brush
-from .mdp.writing import WritingArmCommandCfg, hold_position
+from .mdp.writing import WritingArmCommandCfg, feet_slide_standing, hold_position
 
 WRITING = "writing"
 
@@ -112,8 +127,17 @@ def env_cfg(asset: Path | None = None, play: bool = False) -> ManagerBasedRlEnvC
         stow_noise=0.05,
         grace_s=0.5,
     )
-    cfg.rewards["feet_still"].weight = -10.0
-    cfg.rewards["feet_planted"].params["command_threshold"] = 0.05
+    still = cfg.rewards["feet_still"].params
+    cfg.rewards["feet_slide"] = RewardTermCfg(
+        func=feet_slide_standing,
+        weight=-20.0,
+        params={
+            "sensor_name": "feet_ground_contact",
+            "command_name": still["command_name"],
+            "command_threshold": still["command_threshold"],
+            "asset_cfg": still["asset_cfg"],
+        },
+    )
     cfg.rewards["hold_position"] = RewardTermCfg(
         func=hold_position,
         weight=4.0,

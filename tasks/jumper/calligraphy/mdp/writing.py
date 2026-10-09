@@ -240,4 +240,28 @@ def hold_position(env: ManagerBasedRlEnv, command_name: str, std_xy: float,
     return torch.where(counts, r, torch.zeros_like(r))
 
 
-__all__ = ["WritingArmCommand", "WritingArmCommandCfg", "hold_position"]
+
+def feet_slide_standing(env: ManagerBasedRlEnv, sensor_name: str, command_name: str,
+                        command_threshold: float, asset_cfg) -> torch.Tensor:
+    """Summed horizontal speed of the feet **on the floor**, while told to stand. m/s.
+
+    five_foot's `feet_still` charges foot speed while standing, on the floor and in
+    the air alike, and `feet_planted` pays every foot that is down. So a foot moved
+    by a step paid what a foot dragged the same distance paid, and lost
+    `feet_planted` while it was up: dragging was always the cheaper way to move a
+    foot, and every policy here did it -- 0 lift-offs, 14-55 mm of slide per foot
+    over a 4.8 s unfold, the same with MuJoCo's elliptic cone at impratio 10, so not
+    contact creep (`model_92598`, 2026-10-09, native:cpu). This charges only the
+    drag, so a step becomes the cheap way. The contact test is the sensor's `found`,
+    the one the gait terms read.
+    """
+    from ...common.mdp.rewards import contact_state, moving_gate
+
+    asset = env.scene[asset_cfg.name]
+    speed = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :2].norm(dim=-1)  # [B, F]
+    touching = contact_state(env, sensor_name)
+    standing = 1.0 - moving_gate(env, command_name, command_threshold)
+    return (speed * touching).sum(dim=1) * standing
+
+
+__all__ = ["WritingArmCommand", "WritingArmCommandCfg", "feet_slide_standing", "hold_position"]
