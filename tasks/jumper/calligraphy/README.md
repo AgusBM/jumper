@@ -24,12 +24,11 @@ Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
 | `wu.gif` | 4 | the overhead shot at 6x, 480x360, for the README |
 | `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
 
-> **Status (2026-10-09): 无 at 12.1 cm, every stroke whole.** The brush is a thick
-> handle gripped by the shut claw and a black cone of hair that sinks into the floor.
-> A fine-tuned `jumper.calligraphy` policy holds the trunk still while the arm
-> writes, and five_foot's shipped policy does the walking -- see
-> [Where it stands](#where-it-stands). The gif in the repository's README is still
-> from the earlier version (runs 6-7 below).
+> **Status (2026-10-09): 无 at 13.6 cm, every stroke whole, the feet still.** The
+> brush is a thick handle gripped by the shut claw and a black cone of hair that
+> sinks into the floor. five_foot's shipped policy walks; while the arm is out its
+> last action is held, so the legs stand like a statue -- see
+> [Where it stands](#where-it-stands).
 
 **Two things live here.** The tools write a character with a policy; the task
 `jumper.calligraphy` trains that policy -- see [Training the fix](#training-the-fix).
@@ -139,6 +138,33 @@ the README quotes.
   band and let it walk while writing (option B).
 
 ## Where it stands
+
+**The legs are held while the arm writes** (`write.py --hold-legs`, the default).
+Every policy -- five_foot's and three rounds of `jumper.calligraphy` -- reacts to
+the arm unfolding by dragging its feet along the floor, 10-124 mm per foot with
+no lift-off; held, the walking policy's last action moves them 0.0-2.3 mm. Three
+runs of 无 from three random starts, five_foot's shipped policy only (2026-10-09,
+native:cpu, 4-core container):
+
+| | size | seams | ink centre to stroke, median / p95 / max | trunk while writing | feet: unfold / write / fold |
+|---|---|---|---|---|---|
+| hold11 | 13.6 cm | 0 | 0.7 / 4.2 / 6.8 mm | <= 0.1 mm | <= 1.8 / 0.2 / 0.3 mm |
+| hold12 | 13.6 cm | 0 | 0.7 / 4.6 / 6.8 mm | <= 0.1 mm | <= 2.1 / 0.1 / 0.2 mm |
+| hold13 | 13.6 cm | 0 | 0.7 / 4.2 / 7.7 mm | <= 0.1 mm | <= 2.3 / 0.2 / 1.0 mm |
+
+```bash
+python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
+```
+
+- Held, the stance's height is the walking policy's, 101-109 mm, so the band is
+  where the arm reaches at both 100 and 110 mm (`HELD_Z`); built at one height,
+  the other left the ends of strokes 3 and 4 out of reach.
+- With the brush down, the IK never takes a solution on the arm's other branch:
+  with LF_J3 at its limit it once did, and swung the hair 83 mm up and 100 mm off
+  the stroke mid-stroke.
+
+What follows is how it got here: the fine-tuned policies, which held the trunk
+but dragged the feet.
 
 **Two policies, one each for what they do well.** With the fine-tuned checkpoint
 (`out/model_89599.pt`, 3000 iterations from five_foot's on an RTX 3090) writing and

@@ -83,6 +83,16 @@ and at -10.0 alike. `feet_still` is back at five_foot's -2.0, and `feet_slide`
 so the ~0.037 m/s of the unfold costs 0.74 per second against `hold_position`'s
 4.0, and stepping the same foot costs `feet_still`'s 0.07 and a fifth of
 `feet_planted` for the time it is up.
+
+## What the third round showed
+
+It did not change it either: `model_95597` still drags its feet 13-47 mm per
+unfold, no lift-off. The same unfold with the policy's action held instead of
+recomputed moves the feet 0.0-1.4 mm and the trunk 0.2 mm, for this policy and for
+five_foot's alike -- the slide is every policy reacting to the arm, not something
+the arm does to the stance. So `tools/write.py` holds the walking policy's last
+action while the arm is out (`--hold-legs`), and writes with five_foot's shipped
+policy and no fine-tune at all. This task stays as the record of the three rounds.
 """
 
 from __future__ import annotations

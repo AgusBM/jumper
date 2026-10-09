@@ -27,12 +27,13 @@ claw and writes **无** (*wú*, "nothing"), stroke by stroke, in stroke order.
   unfolds it, and the brush — a black cone of hair gripped in the shut claw —
   sinks into the stone to make the stroke thicker where it is pressed. The arm
   is moved by inverse kinematics against where the body really is.
-- **Two policies.** Jumper's five-legged gait (`jumper.five_foot`) walks; a version
-  of it fine-tuned to stand still while the arm is out (`jumper.calligraphy`,
-  3000 iterations on one RTX 3090) holds the body while the arm writes.
-- **Measured:** 无 at 12.1 cm, all four strokes whole in every run; the ink is
-  0.7 mm from the stroke (median, p95 3.6–4.0 mm), the body moves 0.2–2.3 mm while
-  a stroke is written, and no ink falls outside the strokes.
+- **The legs stand like a statue while the arm writes.** Jumper's five-legged gait
+  (`jumper.five_foot`) walks; once it stops, its last command to the legs is held
+  until the arm has folded again, so the feet do not shuffle as the arm swings out.
+- **Measured:** 无 at 13.6 cm, all four strokes whole in every run; the ink is
+  0.7 mm from the stroke (median, p95 4.2–4.6 mm), the body moves 0.1 mm while a
+  stroke is written, the feet at most 2.3 mm while the arm unfolds, and no ink
+  falls outside the strokes.
 
 Everything — the planner, the controller, the renders and the stroke data for
 painting the ink in post-production — is in

@@ -129,6 +129,14 @@ MAX_REPLANS = 2
 #: (final5, 2026-10-09, a fine-tuned policy). A bounded run with a stroke missing
 #: says what is wrong; a crawl hides it.
 MAX_PIECES = 4
+#: While the arm is out the legs hold the walking policy's last action (--hold-legs,
+#: the default) rather than a policy driving them. Every policy reacts to the arm
+#: unfolding by dragging its feet: 10-43 mm per foot with no lift-off over a 4.8 s
+#: unfold, through three rounds of training that charged it ever harder (the low
+#: shot shows it). The same unfold with the action held: feet 0.0-1.4 mm, trunk
+#: 0.2-0.4 mm and 0.3 mm in height, against 1.8-18.7 mm with the policy running
+#: (one robot each, `model_95597` and five_foot's, 2026-10-09, native:cpu). The
+#: brush has no contact, so nothing pushes back; the PD holds the stance.
 #: While writing, this many consecutive IK misses end the stretch where it is.
 MISS_STEPS = 3
 #: The arm comes to rest for this long after unfolding or folding; going straight
@@ -153,6 +161,10 @@ LOWER_S, LIFT_S = 0.35, 0.30
 HIGH = 0.06                       # m
 #: A solve that misses by more than this is retried from the reach map's seed.
 IK_RETRY = 0.002                  # m
+#: The trunk heights the band must hold at when the legs are held (--hold-legs).
+HELD_Z = (0.100, 0.110)           # m
+#: With the brush down, a retry is taken only if no joint moves further than this.
+BRANCH_JUMP = math.radians(20.0)
 #: Tracking. The arm's PD lags a moving target -- 5.7 mm behind at 4 cm/s, 2.1 mm
 #: across, measured on the first full run without either term (2026-10-08,
 #: native:cpu, 无 at 0.30 m: median error 6.8 mm). So the target is commanded
@@ -222,6 +234,9 @@ def main() -> int:
     ap.add_argument("--plan-only", action="store_true",
                     help="cut the plan into stretches, draw them, and stop")
     ap.add_argument("--max-stretches", type=int, default=None)
+    ap.add_argument("--no-hold-legs", dest="hold_legs", action="store_false",
+                    help="let --checkpoint's policy drive the legs while the arm is out, "
+                         "instead of holding the walking policy's last action")
     ap.add_argument("--nudge-margin", type=float, default=NUDGE_MARGIN,
                     help="nudge until the stroke fits with this much to spare, m")
     ap.add_argument("--overreach", type=float, default=OVERREACH,
@@ -251,7 +266,35 @@ def main() -> int:
     arm = armmod.Arm(env.sim.mj_model, palm_x_min=args.palm_x_min or armmod.PALM_X_MIN)
     standing = sim.standing_qpos(env.sim.mj_model)
     t0 = time.time()
-    rm = armmod.cached_reach_map(arm, standing, CACHE)
+    if args.hold_legs:
+        # Held, the legs keep the walking policy's stance, and its height is not
+        # STAND_Z's 106.5 mm: 108-109 mm stood from the start, 101 mm stopped after
+        # a walk (hold4-hold7). A band built at one height left the ends of 无's
+        # third and fourth strokes out of reach at another -- one or two seams a
+        # run. So the band is where the arm reaches at every height in HELD_Z.
+        # Each band is first closed by one cell: they are speckled with cells whose
+        # solve missed, and intersecting two speckled bands left no 10 mm-deep room
+        # for even a 5 cm 无 (55 cm^2 of it, against 140 closed; hold8-hold10).
+        from scipy.ndimage import binary_closing, distance_transform_edt
+
+        rm = None
+        for z in HELD_Z:
+            standing[2] = z
+            band = armmod.cached_reach_map(arm, standing, CACHE)
+            nearest = distance_transform_edt(~band.ok, return_indices=True)[1]
+            band.seed = band.seed[nearest[0], nearest[1]]
+            band.ok = band.ok | binary_closing(band.ok, iterations=1)
+            if rm is None:
+                rm = band
+                continue
+            cells = np.argwhere(rm.ok)
+            ij = band.index(cells * rm.cell + (rm.x0, rm.y0))
+            inside = ((ij >= 0) & (ij < band.ok.shape)).all(axis=1)
+            keep = np.zeros(len(cells), bool)
+            keep[inside] = band.ok[ij[inside, 0], ij[inside, 1]]
+            rm.ok[cells[~keep, 0], cells[~keep, 1]] = False
+    else:
+        rm = armmod.cached_reach_map(arm, standing, CACHE)
     print(f"[write] reach band: {rm.ok.sum() * rm.cell**2 * 1e4:.0f} cm^2 "
           f"({time.time() - t0:.1f} s)")
     import importlib.util
@@ -261,7 +304,10 @@ def main() -> int:
     stability = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(stability)
     stable = CACHE / stability.stable_name(rm.key, args.checkpoint)
-    if stable.exists():
+    if args.hold_legs:
+        print("[write] legs held while the arm is out: the band is not cut by a stability "
+              "map (that measures a policy reacting to the arm)")
+    elif stable.exists():
         rm.ok &= np.load(stable)["ok"]
         print(f"[write] where the policy also stands still (tools/stability.py): "
               f"{rm.ok.sum() * rm.cell**2 * 1e4:.0f} cm^2")
@@ -312,13 +358,22 @@ def main() -> int:
         qpos = env.sim.data.qpos[0].cpu().numpy().astype(np.float64)
         return qpos, qpos[0:3].copy(), _yaw(qpos[3:7])
 
+    #: The walking policy's last action, held while the arm is out (--hold-legs).
+    held = [None]
+
     def step(phase, k, sample, target, residual):
         nonlocal obs, sim_t
         hold = torch.tensor([[*q_cmd, brush.FINGER_HOLD]], dtype=torch.float32)
         robot.set_joint_position_target(hold, joint_ids=jids)
         with torch.inference_mode():
-            act = walk_policy if phase in (WALK, SETTLE) else policy
-            obs, _, dones, _ = wrapped.step(act(obs))
+            if phase in (WALK, SETTLE):
+                action = walk_policy(obs)
+                held[0] = action.clone()
+            elif args.hold_legs:
+                action = held[0]
+            else:
+                action = policy(obs)
+            obs, _, dones, _ = wrapped.step(action)
         sim_t += dt
         if bool(dones[0]):
             raise RuntimeError(f"the episode ended at t={sim_t:.2f}s in {PHASES[phase]} "
@@ -337,7 +392,7 @@ def main() -> int:
                      -min(tip[2], 0.0),
                      *base, yaw, residual, *steer.values])
 
-    def solve(target):
+    def solve(target, on_floor=False):
         """IK from the last command; from the reach map's seed if that misses.
 
         Continuing from the last command keeps the arm on one branch, and is what
@@ -345,6 +400,12 @@ def main() -> int:
         reached from smoothly -- one unfold in the second run did, and the arm
         then wrote 12 cm off the stroke for its whole length -- the seed of the
         target's cell is a known-good branch.
+
+        `on_floor`: the brush is down, and the seed's branch is taken only if it is
+        near the arm's. With LF_J3 at its limit mid-stroke the seed's answer was the
+        other branch, -154 to -40 deg on LF_J1, and the arm swung through the air to
+        it with the hair 83 mm up and 100 mm off (hold1, 无's last stroke). A miss is
+        what the stroke should get instead: MISS_STEPS of them cut it there.
         """
         nonlocal q_cmd
         qpos, base, yaw = state()
@@ -353,7 +414,8 @@ def main() -> int:
         q, err = arm.ik(target, q_cmd)
         if err > IK_RETRY:
             q2, err2 = arm.ik(target, seed_for(target[:2], base, yaw))
-            if err2 < err:
+            near = np.abs(q2 - q_cmd).max() < BRANCH_JUMP
+            if err2 < err and (near or not on_floor):
                 q, err = q2, err2
         q_cmd = q
         return err
@@ -391,7 +453,7 @@ def main() -> int:
             zcorr[0] = np.clip(zcorr[0] + KW * dt * (width_now[0] - press * width_full),
                                *ZCORR)
             z = max(z + zcorr[0], -armmod.DEPTH_MAX)
-        return solve(np.array([*(lead_xy + corr), z]))
+        return solve(np.array([*(lead_xy + corr), z]), on_floor=True)
 
     def unfold_to(q_goal, k, sample, target):
         """Stow -> `q_goal` (or back) along the floor-safe joint path."""
