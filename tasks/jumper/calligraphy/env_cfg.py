@@ -18,6 +18,8 @@ five_foot's, and what this file changes is listed below and nothing else:
 | the carried arm | held in `LF_GRASP_BOX` all episode | out about half the time: unfolded, moved over the writing band at writing speed, folded back (`mdp/writing.py`) |
 | the commands while the arm is out | sampled | velocity zero, body level -- what `tools/write.py` sends |
 | reward | -- | `hold_position`: stay where the trunk stood when it became still |
+| `feet_still` weight | -2.0 | -10.0: a foot slid along the floor while standing costs five times as much |
+| `feet_planted` gate | command under 0.10 m/s | under 0.05, the gate every other standing term uses |
 
 Observations are untouched -- the arm's joints were already observed (five_foot
 observes the carried joints), and the writing command is not -- so the shipped
@@ -42,6 +44,30 @@ five_foot's config; a copy here would be read by nothing.
   run.
 - grace 0.5 s: the last step of a walk lands within it (run 8, the trunk settled
   5-7 mm over about that long).
+
+## The second round: feet that slide, and a walk that will not start
+
+`out/model_89599.pt`, the first round (3000 iterations from five_foot's), holds the
+trunk still while the arm writes -- 0-2 mm -- and two habits came with it, both
+measured in replay (2026-10-09, native:cpu):
+
+- **It moves its feet by sliding them.** As the arm unfolds every foot slides
+  along the floor without lifting: 4-68 mm per foot over a 4 s unfold (five_foot's
+  own policy: 4-124 mm, the trunk rising up to 45 mm). Nothing charged it enough:
+  `feet_still` prices summed foot speed while standing at -2.0, so that slide --
+  ~0.045 m/s summed -- cost 0.09 per second against `hold_position`'s 4.0. At
+  -10.0 it costs 0.45, and stepping or holding the feet becomes the cheaper way.
+- **It stands for slow commands.** A push of 0.07 m/s for 0.12-1.5 s moved it
+  0.3-2.1 mm, 0.10 m/s 0.6-5 mm (five_foot's: 4-100 mm), so `tools/write.py` walks
+  with five_foot's policy -- and the switch between the two stances at the unfold
+  is itself a slide of 26-95 mm per foot with the trunk rising 22 mm. five_foot's
+  `feet_planted` pays every planted foot while the command is under 0.10 m/s, and
+  every other standing term switches at 0.05: between the two, standing was paid
+  and walking only half-scored, and with `hold_position` added the first round
+  settled on standing. At 0.05 that band is gone.
+
+Both are guesses at the cause, checked by replaying the result: the slide per
+unfold (`feet moved`) and a push of 0.07-0.10 m/s that moves the robot.
 """
 
 from __future__ import annotations
@@ -86,6 +112,8 @@ def env_cfg(asset: Path | None = None, play: bool = False) -> ManagerBasedRlEnvC
         stow_noise=0.05,
         grace_s=0.5,
     )
+    cfg.rewards["feet_still"].weight = -10.0
+    cfg.rewards["feet_planted"].params["command_threshold"] = 0.05
     cfg.rewards["hold_position"] = RewardTermCfg(
         func=hold_position,
         weight=4.0,

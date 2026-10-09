@@ -245,3 +245,23 @@ MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u
 
 `write.py` prints the fitted size, the trunk's drift through every stroke and any
 seam; a seam or a drift over ~5 mm is what the training has not fixed yet.
+
+### Second round: feet that do not slide
+
+In the low shot the first round's feet slide along the floor as the arm unfolds
+(4-124 mm per foot, every policy so far), and it does not walk below ~0.15 m/s,
+so `write.py` walks with five_foot's -- whose switch of stance at the unfold is a
+slide too. `env_cfg.py` ("The second round") has the measurements and the two
+changes; train them from the first round:
+
+```bash
+python scripts/train.py --task jumper.calligraphy --headless \
+    --checkpoint tasks/jumper/calligraphy/out/model_89599.pt
+```
+
+Watch `Episode_Reward/feet_still` rise towards 0 and `hold_position` hold where
+the first round had it. Then, with one policy for everything:
+
+```bash
+python tasks/jumper/calligraphy/tools/write.py --checkpoint <ckpt> --walk-checkpoint <ckpt> --palm-x-min 0.10
+```
