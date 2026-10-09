@@ -664,6 +664,13 @@ def main() -> int:
             folded = True
         print(f"[write] stretch {k + 1} done at t={sim_t:.1f}s ({len(todo)} to go)", flush=True)
 
+    if not folded:
+        # The last stretch leaves the arm out at HOVER; standing on, the trunk settled
+        # 9 mm and put the hair 7 mm into the floor (run 17, 2026-10-09). Lift it clear.
+        qpos, _, _ = state()
+        arm.set_state(qpos)
+        here = arm.tip_pos(q_cmd)
+        line(here, np.array([*here[:2], HIGH]), REACH_SPEED, FOLD, len(done) - 1, -1)
     for _ in range(int(1.0 / dt)):
         step(DONE, len(done) - 1, -1, None, np.nan)
     cut = done
