@@ -38,6 +38,26 @@ and everything here sits on top of it -- the arm that policy leaves out of its a
 is driven by inverse kinematics, and its velocity command by a steering loop. There
 is no `env_cfg.py` or `rl_cfg.py`, so the registry does not see the directory.
 
+## A longer film: 跳跳
+
+Jumper's name in Chinese, 跳跳 (*tiàotiào*), top to bottom as 地书 is usually
+written, then the outro: the robot walks to the text's side, turns to it, dances
+(the body twisting over its feet, a roll, a bow) and stands while the camera pulls
+back to the whole text.
+
+```bash
+python tasks/jumper/calligraphy/tools/write.py --text 跳跳 --palm-x-min 0.10 --out logs/calligraphy/u8df3-u8df3/film
+MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/film
+```
+
+- `--text` takes any characters with stroke data in `data/` (`tools/strokes.py
+  --import`); `--layout horizontal` writes them left to right.
+- `--scene daylight` (the default) puts the repository's daylight sky behind the
+  low shots; `--no-outro` stops at the last stroke.
+- `film.mp4` is the shot for a video: real time, following the character being
+  written, then the reveal and five seconds on the result. `result.png` is the
+  result from above at 1920 x 1080.
+
 ## What is where
 
 | file | what it does |
