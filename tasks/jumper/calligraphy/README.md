@@ -163,6 +163,14 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
   measured), and the head of a stroke is pressed no harder than its body
   (`hanzi.HEAD` 1.0): the arm's lag already makes it 1.5x as wide. The heads were
   21-24 mm round blots before; now 12.6-13.1 mm, the hair at most 7.5 mm deep.
+- The arm unfolds and folds around the robot, not through it. The model gives the
+  carried arm no contacts with the trunk, the other legs or itself, and the fold
+  path was chosen for floor clearance alone: the first unfold of every run swept
+  the claw across the top of the trunk and through RF's claw. `arm.fold_path` now
+  takes, of the paths 5 mm off the floor, the one whose claw and brush come within
+  5 mm of the trunk and the other legs least, then of the arm's own upper arm
+  (whose convex hull overlaps the claw's near the elbow where the meshes do not).
+  Two runs: neither touches the trunk or another leg (self2-self3).
 - With the brush down, the IK never takes a solution on the arm's other branch:
   with LF_J3 at its limit it once did, and swung the hair 83 mm up and 100 mm off
   the stroke mid-stroke.

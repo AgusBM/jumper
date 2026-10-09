@@ -68,6 +68,14 @@ FLOOR_CLEARANCE = 0.003
 #: `fold_path` searches via poses when no joint ordering keeps this much clearance.
 FOLD_VIA_BELOW = 0.03
 VIA_SAMPLES = 300
+#: How near the claw and the brush may come to the rest of the robot while the arm
+#: folds or unfolds. The model gives the carried arm no contacts with the trunk, the
+#: legs or itself, so nothing stops it passing through them: the first unfold of
+#: every run put the palm through LM's thigh and the arm's own shoulder, and in the
+#: render the claw swept across the top of the trunk (hold20, 2026-10-09).
+SELF_CLEARANCE = 0.005
+#: A fold path must keep the brush and the palm this far off the floor to be taken.
+FOLD_FLOOR_MIN = 0.005
 
 
 @dataclass
@@ -114,6 +122,23 @@ class Arm:
             b for b in range(model.nbody) if model.body(b).name.startswith(PREFIX + "LF_")
         }
         self._jacp = np.zeros((3, model.nv))
+        # The claw and the brush, against every other collision geom of the robot
+        # but the forearm the palm is mounted on (they overlap by construction).
+        name = lambda g: model.body(model.geom_bodyid[g]).name[len(PREFIX):]
+        robot = [g for g in range(model.ngeom)
+                 if model.geom_bodyid[g] != 0 and (model.geom(g).name or "").endswith(
+                     ("meshcol", "meshcol1", "meshcol2", "meshcol3", "meshcol4", "meshcol5"))]
+        claw = [g for g in robot if name(g).startswith(("LF_palm", "LF_finger"))]
+        claw += [model.geom(PREFIX + n).id for n in brush.GEOMS]
+        rest = [g for g in robot if g not in claw and name(g) != "LF_forearm_link"]
+        self._pairs = [(a, b) for a in claw for b in rest]
+        # The arm's own shoulder and upper arm, apart from the trunk and the other
+        # legs: their collision hulls are convex hulls of a concave claw and arm,
+        # so near the elbow they read as touching where the meshes do not.
+        self._own = np.array([name(b).startswith(("LF_shoulder", "LF_upper_arm"))
+                              for _, b in self._pairs])
+        self._rbound = model.geom_rbound
+        self._fromto = np.zeros(6)
 
     def set_state(self, qpos: np.ndarray) -> None:
         self.d.qpos[:] = qpos
@@ -162,15 +187,68 @@ class Arm:
                          self.d.site_xpos[self.palm_tip][2],
                          self.d.xpos[self.finger_tip][2]))
 
+    def self_contact(self, q: np.ndarray) -> tuple[bool, bool]:
+        """Whether the claw or the brush is within SELF_CLEARANCE of (the trunk or
+        another leg, the arm's own shoulder or upper arm), with the trunk as the
+        last `set_state` left it."""
+        self.d.qpos[self.qadr] = q
+        mujoco.mj_kinematics(self.m, self.d)
+        x, r = self.d.geom_xpos, self._rbound
+        trunk = own = False
+        for i, (a, b) in enumerate(self._pairs):
+            if trunk and own:
+                break
+            if (own if self._own[i] else trunk):
+                continue
+            if np.linalg.norm(x[a] - x[b]) - r[a] - r[b] > SELF_CLEARANCE:
+                continue
+            # Always asked out to 5 cm: with a short `distmax` two meshes that
+            # overlap come back as `distmax`, not as touching (palm and upper arm,
+            # 0.0 at 0.05 and 6.0 mm at 0.006).
+            if mujoco.mj_geomDistance(self.m, self.d, a, b, 0.05, self._fromto) \
+                    < SELF_CLEARANCE:
+                if self._own[i]:
+                    own = True
+                else:
+                    trunk = True
+        return trunk, own
+
+    def _path_cost(self, q_from, legs, samples):
+        """(steps near the trunk or another leg, steps near the arm's own upper arm,
+        -lowest floor clearance) along `legs`: smaller is better. The floor first,
+        cheaply; a path below FOLD_FLOOR_MIN is not checked against the robot."""
+        low, a = np.inf, q_from
+        for b in legs:
+            for t in np.linspace(0.0, 1.0, samples):
+                low = min(low, self.clearance(a + t * (b - a)))
+            a = b
+        if low < FOLD_FLOOR_MIN:
+            return (np.inf, np.inf, -low)
+        trunk = own = 0
+        a = q_from
+        for b in legs:
+            for t in np.linspace(0.0, 1.0, samples):
+                hit = self.self_contact(a + t * (b - a))
+                trunk += hit[0]
+                own += hit[1]
+            a = b
+        return (trunk, own, -low)
+
     def fold_path(self, q_from: np.ndarray, q_to: np.ndarray,
                   samples: int = 30) -> tuple[list[np.ndarray], float]:
-        """Waypoints from `q_from` to `q_to` that keep the arm off the floor.
+        """Waypoints from `q_from` to `q_to` that keep the arm off the floor and the
+        claw and the brush clear of the rest of the robot.
 
         Interpolating all four joints at once swings the brush through the floor
         on the way between the stow and a writing pose: the arm turns about the
         shoulder while the palm is pointing down. So each subset of joints is
-        tried moving first, the rest after, and the order whose lowest point is
-        highest wins. Returns (waypoints after q_from, that lowest height).
+        tried moving first, the rest after. A path must keep FOLD_FLOOR_MIN off the
+        floor; of those, the one whose claw comes near the trunk and the other legs
+        least wins, then near the arm's own upper arm, then the highest. Picked by
+        the floor alone, the first unfold of every run swept the claw across the
+        trunk and through RF's claw (hold20). If no ordering stays clear of the
+        trunk, via poses are tried. Returns (waypoints after q_from, the lowest
+        floor clearance).
         """
         import itertools
 
@@ -180,29 +258,19 @@ class Arm:
                 mid = q_from.copy()
                 mid[list(first)] = q_to[list(first)]
                 legs = [q_to] if r == 0 else [mid, q_to]
-                low, a = np.inf, q_from
-                for b in legs:
-                    for t in np.linspace(0.0, 1.0, samples):
-                        low = min(low, self.clearance(a + t * (b - a)))
-                    a = b
-                if best is None or low > best[1]:
-                    best = (legs, low)
-        if best[1] >= FOLD_VIA_BELOW:
-            return best
-        # No ordering clears the floor: try going through a via pose, sampled
-        # (deterministically) from the joint ranges, keeping the best.
-        rng = np.random.default_rng(0)
-        for via in rng.uniform(self.lo, self.hi, size=(VIA_SAMPLES, 4)):
-            low, a = np.inf, q_from
-            for b in (via, q_to):
-                for t in np.linspace(0.0, 1.0, samples):
-                    low = min(low, self.clearance(a + t * (b - a)))
-                    if low <= best[1]:
-                        break
-                a = b
-            if low > best[1]:
-                best = ([via, q_to], low)
-        return best
+                cost = self._path_cost(q_from, legs, samples)
+                if best is None or cost < best[1]:
+                    best = (legs, cost)
+        if best[1][0] > 0 or -best[1][2] < FOLD_VIA_BELOW:
+            # Sampled deterministically from the joint ranges, keeping the best.
+            rng = np.random.default_rng(0)
+            for via in rng.uniform(self.lo, self.hi, size=(VIA_SAMPLES, 4)):
+                cost = self._path_cost(q_from, [via, q_to], samples)
+                if cost < best[1]:
+                    best = ([via, q_to], cost)
+                if best[1][0] == 0 and best[1][1] == 0 and -best[1][2] >= FOLD_VIA_BELOW:
+                    break
+        return best[0], -best[1][2]
 
     def writable(self, q: np.ndarray, model: mujoco.MjModel, data: mujoco.MjData) -> bool:
         """The constraints above, on a model whose arm geoms carry a contact margin."""

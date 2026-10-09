@@ -33,6 +33,8 @@ import numpy as np
 
 PALM_BODY = "LF_palm_link"
 BRUSH_BODY = "brush"
+#: The brush's geoms; neither collides, `arm.self_clearance` measures them.
+GEOMS = ("brush_handle", "brush_hair")
 TIP_SITE = "brush_tip"      # the cone's apex
 BASE_SITE = "brush_base"    # the centre of the cone's base, where the hair meets the handle
 
