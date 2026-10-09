@@ -114,6 +114,12 @@ UNFOLD_TRIES = 3
 #: it gets a new station, up to MAX_REPLANS times per stroke.
 MIN_PIECE = 15
 MAX_REPLANS = 2
+#: A stroke is given up after this many pieces. When the trunk cannot be put where
+#: a stroke is in reach, each new station wrote one more sample and failed again:
+#: 无's first stroke came out as 19 one-sample pieces and the run as 59 stretches
+#: (final5, 2026-10-09, a fine-tuned policy). A bounded run with a stroke missing
+#: says what is wrong; a crawl hides it.
+MAX_PIECES = 4
 NUDGE_V = 0.07                    # m/s commanded
 NUDGE_RATE = 0.035                # m/s the trunk actually moves under it (assumed)
 NUDGE_T = (0.12, 0.8)             # s, the shortest and longest push
@@ -406,6 +412,7 @@ def main() -> int:
     todo = deque(cut)
     done: list = []
     replans = dict.fromkeys(range(len(plan.strokes)), 0)
+    pieces = dict.fromkeys(range(len(plan.strokes)), 0)
     shifts: dict[int, np.ndarray] = {}
 
     def hold_tip(k, sample, seconds):
@@ -425,6 +432,11 @@ def main() -> int:
     folded = True
     while todo:
         c = todo.popleft()
+        pieces[c.stroke] += 1
+        if pieces[c.stroke] > MAX_PIECES:
+            print(f"\n[write] stroke {c.stroke + 1}: GAVE UP on samples [{c.start}, {c.end}] "
+                  f"after {MAX_PIECES} pieces")
+            continue
         k = len(done)
         done.append(c)
         s = plan.strokes[c.stroke]
