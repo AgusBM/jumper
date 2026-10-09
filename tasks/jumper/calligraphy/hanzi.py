@@ -160,6 +160,8 @@ class Stroke:
     xy: np.ndarray
     #: (n,) in [0, 1], the fraction of the full press depth at each point.
     press: np.ndarray
+    #: Which character of the plan's text it belongs to.
+    char: int = 0
 
     @property
     def length(self) -> float:
@@ -168,11 +170,23 @@ class Stroke:
 
 @dataclass
 class Plan:
+    #: The text: one character, or several (`plan_text`).
     character: str
     size: float
+    #: The centre of the whole text.
     origin: tuple[float, float]
     ds: float
     strokes: list[Stroke] = field(default_factory=list)
+
+    def bounds(self, pad: float = 0.0) -> tuple[float, float, float, float]:
+        """(x_min, x_max, y_min, y_max) of every stroke, world metres."""
+        xy = np.concatenate([s.xy for s in self.strokes])
+        lo, hi = xy.min(0) - pad, xy.max(0) + pad
+        return float(lo[0]), float(hi[0]), float(lo[1]), float(hi[1])
+
+    def label(self) -> str:
+        """The text's code points, for titles and directory names: u65e0, u8df3-u8df3."""
+        return "-".join(f"u{ord(c):04x}" for c in self.character)
 
     def to_json(self) -> dict:
         return {
@@ -185,6 +199,7 @@ class Plan:
             "strokes": [
                 {
                     "index": s.index,
+                    "char": s.char,
                     "length_m": round(s.length, 5),
                     "xy": np.round(s.xy, 5).tolist(),
                     "press": np.round(s.press, 4).tolist(),
@@ -197,7 +212,8 @@ class Plan:
     def from_json(cls, data: dict) -> Plan:
         plan = cls(data["character"], data["size_m"], tuple(data["origin_m"]), data["ds_m"])
         for s in data["strokes"]:
-            plan.strokes.append(Stroke(s["index"], np.asarray(s["xy"]), np.asarray(s["press"])))
+            plan.strokes.append(Stroke(s["index"], np.asarray(s["xy"]), np.asarray(s["press"]),
+                                       s.get("char", 0)))
         return plan
 
 
@@ -219,4 +235,30 @@ def plan(char: str, size: float = 0.30, origin: tuple[float, float] = (0.0, 0.0)
         pts = font_to_floor(np.asarray(median, dtype=float), size, origin)
         xy = _resample(_catmull_rom(pts), ds)
         out.strokes.append(Stroke(i, xy, press_profile(len(xy))))
+    return out
+
+
+#: The space between two characters of a text, as a fraction of their size.
+GAP = 0.15
+
+
+def plan_text(text: str, size: float = 0.30, origin: tuple[float, float] = (0.0, 0.0),
+              layout: str = "vertical", gap: float = GAP, ds: float = 0.001) -> Plan:
+    """Several characters, `size` metres each, the whole text centred on `origin`.
+
+    `vertical` reads top to bottom, the way 地书 is usually written -- the first
+    character furthest along +x, where the robot starts facing; `horizontal` left
+    to right, along -y. Strokes keep the text's writing order and are numbered
+    through it; each knows its character (`Stroke.char`).
+    """
+    if layout not in ("vertical", "horizontal"):
+        raise ValueError(f"layout {layout!r}: vertical or horizontal")
+    pitch = size * (1.0 + gap)
+    out = Plan(text, size, origin, ds)
+    for i, char in enumerate(text):
+        k = (len(text) - 1) / 2 - i
+        centre = ((origin[0] + k * pitch, origin[1]) if layout == "vertical"
+                  else (origin[0], origin[1] + k * pitch))
+        for s in plan(char, size, centre, ds).strokes:
+            out.strokes.append(Stroke(len(out.strokes), s.xy, s.press, i))
     return out

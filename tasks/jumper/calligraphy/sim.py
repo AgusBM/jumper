@@ -54,10 +54,14 @@ class Sim:
 
 
 def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT,
-          walk_checkpoint: Path | None = None) -> Sim:
+          walk_checkpoint: Path | None = None, scene: str | None = None) -> Sim:
     """With `walk_checkpoint`, a second policy for walking: both are five_foot's
     network, a stateless MLP that carries its own observation normaliser, so the
-    caller may switch between them from one step to the next."""
+    caller may switch between them from one step to the next.
+
+    `scene`: a look-only scene from `scenes/` (`daylight`, `beach`) for the sky,
+    the light and the ground the renders start from; its physics is the default
+    scene's."""
     import warnings
 
     warnings.filterwarnings("ignore")
@@ -78,6 +82,10 @@ def build(num_envs: int = 1, checkpoint: Path = CHECKPOINT,
     from . import arm as armmod
 
     cfg = tasks.load_env_cfg(TASK, play=True)
+    if scene is not None:
+        import scenes
+
+        scenes.apply(cfg, scene)
     cfg.scene.num_envs = num_envs
     cfg.commands["body_pose"].rel_neutral_envs = 1.0
     env = ManagerBasedRlEnv(cfg=cfg, device="cpu")

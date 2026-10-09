@@ -124,8 +124,9 @@ def to_json(ms: list[Mark], plan, shots) -> dict:
 def to_svg(ms: list[Mark], plan, px: int = 1000) -> str:
     """The ink from above, +x up, as filled circles along each mark: the
     shape a compositor would lay down, at the character's own scale."""
-    half = plan.size / 2 * 1.15
-    cx, cy = plan.origin
+    x0, x1, y0, y1 = plan.bounds()
+    half = max(x1 - x0, y1 - y0, plan.size) / 2 * 1.15
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     k = px / (2 * half)
     parts = [(f'<svg xmlns="http://www.w3.org/2000/svg" width="{px}" height="{px}" '
               f'viewBox="0 0 {px} {px}">'),

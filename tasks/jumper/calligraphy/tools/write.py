@@ -62,8 +62,8 @@ REPO = Path(__file__).resolve().parents[4]
 CACHE = REPO / "logs" / "calligraphy" / "cache"
 
 # Phases, as logged.
-WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE = range(8)
-PHASES = ("walk", "settle", "reach", "lower", "write", "lift", "fold", "done")
+WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE, OUTRO = range(9)
+PHASES = ("walk", "settle", "reach", "lower", "write", "lift", "fold", "done", "outro")
 
 #: Walking: P gains and limits on the velocity command.
 K_POS, V_MAX = 1.5, 0.12          # 1/s, m/s
@@ -161,6 +161,17 @@ LOWER_S, LIFT_S = 0.35, 0.30
 HIGH = 0.06                       # m
 #: A solve that misses by more than this is retried from the reach map's seed.
 IK_RETRY = 0.002                  # m
+#: The outro (--no-outro to leave it out): the robot stands this far to the text's
+#: right (-y) of its edge, facing it, and dances -- (pitch, roll, twist) in degrees
+#: held for so many seconds; pitch + is nose down. A twist from one side to the
+#: other takes 1.3-2 s at the command's 30 deg/s.
+OUTRO_STAND_OFF = 0.22             # m
+OUTRO_DANCE = (
+    (0.0, 0.0, 20.0, 1.6), (0.0, 0.0, -20.0, 1.8), (0.0, 0.0, 20.0, 1.8),
+    (0.0, 0.0, -20.0, 1.8), (0.0, 10.0, 0.0, 1.2), (0.0, -10.0, 0.0, 1.2),
+    (0.0, 0.0, 0.0, 1.0), (15.0, 0.0, 0.0, 1.6), (0.0, 0.0, 0.0, 1.2),
+)
+OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
 #: The trunk heights the band must hold at when the legs are held (--hold-legs).
 HELD_Z = (0.100, 0.110)           # m
 #: With the brush down, a retry is taken only if no joint moves further than this.
@@ -215,7 +226,11 @@ def _wrap(a: float) -> float:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--char", default="无")
+    ap.add_argument("--text", "--char", dest="text", default="无",
+                    help="the character, or characters, to write: 无, 跳跳")
+    ap.add_argument("--layout", choices=("vertical", "horizontal"), default="vertical",
+                    help="how several characters are laid out: top to bottom (the first "
+                         "furthest ahead), or left to right")
     ap.add_argument("--size", type=float, default=None,
                     help="em square, metres; default: as large as fits stroke by stroke")
     ap.add_argument("--origin", type=float, nargs=2, default=(0.45, 0.0),
@@ -240,6 +255,12 @@ def main() -> int:
     ap.add_argument("--plan-only", action="store_true",
                     help="cut the plan into stretches, draw them, and stop")
     ap.add_argument("--max-stretches", type=int, default=None)
+    ap.add_argument("--scene", default="daylight",
+                    help="a look-only scene from scenes/ for the renders' sky and light "
+                         "(daylight, beach, studio), or none")
+    ap.add_argument("--no-outro", dest="outro", action="store_false",
+                    help="stop when the last stroke is written, without walking to the "
+                         "text's side to look at it and dance")
     ap.add_argument("--no-hold-legs", dest="hold_legs", action="store_false",
                     help="let --checkpoint's policy drive the legs while the arm is out, "
                          "instead of holding the walking policy's last action")
@@ -257,13 +278,14 @@ def main() -> int:
     from tasks.jumper.five_foot.claw import ARM_JOINTS, LF_GRASP
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d_%H-%M-%S")
-    out = args.out or REPO / "logs" / "calligraphy" / f"u{ord(args.char):04x}" / stamp
+    label = "-".join(f"u{ord(c):04x}" for c in args.text)
+    out = args.out or REPO / "logs" / "calligraphy" / label / stamp
     out.mkdir(parents=True, exist_ok=True)
 
     # ── The environment: five_foot's replay config, plus the brush ───────────
     walker = None if args.walk_checkpoint.resolve() == args.checkpoint.resolve() \
         else args.walk_checkpoint
-    sm = sim.build(1, args.checkpoint, walker)
+    sm = sim.build(1, args.checkpoint, walker, None if args.scene == "none" else args.scene)
     env, wrapped, policy, robot, jids = sm.env, sm.wrapped, sm.policy, sm.robot, sm.joint_ids
     walk_policy = sm.walk_policy
     steer, pose_cmd, dt = sm.steer, sm.pose, sm.dt
@@ -322,10 +344,12 @@ def main() -> int:
               "without it the band includes arm poses the trunk will not hold still under")
     if args.size is None:
         size, plan, cut = stations.fit_size(
-            lambda z: hanzi.plan(args.char, z, tuple(args.origin)), rm, args.margin)
-        print(f"[write] the largest {args.char} with every stroke whole: {size * 100:.1f} cm")
+            lambda z, d: hanzi.plan_text(args.text, z, (args.origin[0] + d[0],
+                                                         args.origin[1] + d[1]), args.layout),
+            rm, args.margin)
+        print(f"[write] the largest {args.text} with every stroke whole: {size * 100:.1f} cm")
     else:
-        plan = hanzi.plan(args.char, args.size, tuple(args.origin))
+        plan = hanzi.plan_text(args.text, args.size, tuple(args.origin), args.layout)
         cut = stations.whole_strokes(plan, rm, args.margin)
         if cut is None:
             print(f"[write] at {args.size * 100:.0f} cm some stroke does not fit whole; "
@@ -372,7 +396,7 @@ def main() -> int:
         hold = torch.tensor([[*q_cmd, brush.FINGER_HOLD]], dtype=torch.float32)
         robot.set_joint_position_target(hold, joint_ids=jids)
         with torch.inference_mode():
-            if phase in (WALK, SETTLE):
+            if phase in (WALK, SETTLE, OUTRO):
                 action = walk_policy(obs)
                 held[0] = action.clone()
             elif args.hold_legs:
@@ -481,6 +505,22 @@ def main() -> int:
         for _ in range(int(ARM_SETTLE_S / dt)):
             step(FOLD if target is None else REACH, k, sample, target, np.nan)
 
+    def outro(k):
+        """Walk to the text's side, turn to it, and dance: the body twisting over
+        planted feet, then a bow. All of it the walking policy's own; the body-pose
+        command is what the operator's sticks send, inside its standing bands
+        (pitch +-20 deg, twist +-30 deg, slewed at 30 deg/s)."""
+        x0, x1, y0, _ = plan.bounds()
+        spot = np.array([(x0 + x1) / 2, y0 - OUTRO_STAND_OFF])
+        walk(spot, math.pi / 2, k, -1, OUTRO)
+        for pitch, roll, twist, seconds in OUTRO_DANCE:
+            pose_cmd.values = [math.radians(pitch), math.radians(roll), math.radians(twist)]
+            for _ in range(int(seconds / dt)):
+                step(OUTRO, k, -1, None, np.nan)
+        pose_cmd.values = [0.0, 0.0, 0.0]
+        for _ in range(int(OUTRO_HOLD_S / dt)):
+            step(OUTRO, k, -1, None, np.nan)
+
     def settle(k, sample):
         steer.values = [0.0, 0.0, 0.0]
         for _ in range(int(SETTLE_S / dt)):
@@ -534,7 +574,7 @@ def main() -> int:
         p0 = s.xy[c.start]
         above = np.array([*p0, armmod.HOVER])
 
-        def walk(goal, goal_yaw, k, sample):
+        def walk(goal, goal_yaw, k, sample, phase=WALK):
             """Walk, folded, to `goal`, `goal_yaw`; a short walk backs off first."""
             _, base, _ = state()
             e = goal - base[:2]
@@ -566,7 +606,7 @@ def main() -> int:
                     steer.values = [float(cy * v[0] + sy * v[1]),
                                     float(-sy * v[0] + cy * v[1]),
                                     float(np.clip(K_YAW * eyaw, -W_MAX, W_MAX))]
-                    step(WALK, k, sample, None, np.nan)
+                    step(phase, k, sample, None, np.nan)
             settle(k, sample)
 
         def walk_to(shift, c=c, k=k):
@@ -789,6 +829,11 @@ def main() -> int:
         arm.set_state(qpos)
         here = arm.tip_pos(q_cmd)
         line(here, np.array([*here[:2], HIGH]), REACH_SPEED, FOLD, len(done) - 1, -1)
+    if args.outro:
+        if not folded:
+            untwist(len(done) - 1, -1)
+            unfold_to(stow, len(done) - 1, -1, None)
+        outro(len(done) - 1)
     for _ in range(int(1.0 / dt)):
         step(DONE, len(done) - 1, -1, None, np.nan)
     cut = done
@@ -877,7 +922,7 @@ def _topview(out: Path, plan, cut, log, rm, cols=None) -> None:
     ax.set_aspect("equal")
     ax.set_xlabel("-y (m)")
     ax.set_ylabel("x (m)")
-    ax.set_title(f"U+{ord(plan.character):04X}, {plan.size * 100:.1f} cm: plan (tan), "
+    ax.set_title(f"{plan.label().upper()}, {plan.size * 100:.1f} cm: plan (tan), "
                  "strokes (colour), stations (triangles)")
     ax.grid(alpha=0.3)
     fig.savefig(out / "topview.png", dpi=100, bbox_inches="tight")

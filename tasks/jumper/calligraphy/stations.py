@@ -195,6 +195,11 @@ def whole_strokes(plan: Plan, rm: ReachMap, margin: float,
     return out
 
 
+#: `fit_size` nudges the text by these fractions of a band cell before it gives a
+#: size up: which sizes fit depends on where the strokes fall on the band's grid.
+FIT_SHIFTS = ((0.0, 0.0), (0.5, 0.0), (0.0, 0.5), (0.5, 0.5))
+
+
 def fit_size(make_plan, rm: ReachMap, margin: float, lo: float = 0.05, hi: float = 0.40,
              tol: float = 0.0025, yaws: tuple[float, ...] = FIT_YAWS):
     """The largest character size at which every stroke is written whole.
@@ -203,21 +208,19 @@ def fit_size(make_plan, rm: ReachMap, margin: float, lo: float = 0.05, hi: float
     between, and every seam shows: the trunk never stops exactly where it was
     sent, and the second piece starts a few millimetres off the first. So the
     longest stroke sets the size -- it is fitted whole into the band -- and the rest
-    of the character is scaled with it. `make_plan(size)` builds the plan.
-    Returns (size, plan, stretches).
+    of the character is scaled with it. `make_plan(size, shift)` builds the plan,
+    moved by `shift` metres. Returns (size, plan, stretches).
+
+    Sizes are tried from `hi` down, `tol` apart, each at the FIT_SHIFTS: whether a
+    size fits is not monotonic in it, nor the same a fraction of a cell away. A
+    bisection assumed it was and found 跳跳 9.1 cm, where 11.5 fits and 跳 alone
+    fitted at 12.1 (whole_strokes: 跳 fits at 9, 10, 11.5 and 12.1 cm, not at 8,
+    11 or 12; 2026-10-10).
     """
-    best = None
-    if whole_strokes(make_plan(lo), rm, margin, yaws) is None:
-        raise ValueError(f"not even a {lo * 100:.0f} cm character fits stroke by stroke")
-    while hi - lo > tol:
-        mid = (lo + hi) / 2
-        plan = make_plan(mid)
-        cut = whole_strokes(plan, rm, margin, yaws)
-        if cut is None:
-            hi = mid
-        else:
-            lo, best = mid, (mid, plan, cut)
-    if best is None:
-        plan = make_plan(lo)
-        best = (lo, plan, whole_strokes(plan, rm, margin, yaws))
-    return best
+    for size in np.arange(hi, lo - 1e-9, -tol):
+        for fx, fy in FIT_SHIFTS:
+            plan = make_plan(float(size), (fx * rm.cell, fy * rm.cell))
+            cut = whole_strokes(plan, rm, margin, yaws)
+            if cut is not None:
+                return float(size), plan, cut
+    raise ValueError(f"not even a {lo * 100:.0f} cm character fits stroke by stroke")

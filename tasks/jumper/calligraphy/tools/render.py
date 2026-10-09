@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 
@@ -48,6 +49,17 @@ INK_RGBA = (0.22, 0.21, 0.21, 1.0)
 STONE = np.array([0.60, 0.58, 0.55])
 JOINT = np.array([0.42, 0.40, 0.38])
 HAZE = (0.86, 0.87, 0.88, 1.0)
+
+
+def sky_horizon(m: mujoco.MjModel) -> np.ndarray | None:
+    """The colour at the horizon of the model's skybox, or None if it has none: the
+    middle row of the cube's first side face."""
+    for tex in range(m.ntex):
+        if m.tex_type[tex] == mujoco.mjtTexture.mjTEXTURE_SKYBOX:
+            w, h, c = m.tex_width[tex], m.tex_height[tex], m.tex_nchannel[tex]
+            img = m.tex_data[m.tex_adr[tex]: m.tex_adr[tex] + w * h * c].reshape(h, w, c)
+            return img[w // 2, :, :3].mean(axis=0) / 255.0
+    return None
 
 
 def dress(m: mujoco.MjModel) -> None:
@@ -74,17 +86,33 @@ def dress(m: mujoco.MjModel) -> None:
     m.tex_data[adr: adr + w * h * c] = data.ravel()
     m.mat_rgba[mat] = (1.0, 1.0, 1.0, 1.0)
     m.mat_reflectance[mat] = 0.0
-    m.vis.rgba.fog = HAZE
+    # Haze, or with a sky (write.py --scene) the sky's own horizon, so the floor
+    # fades into it rather than into grey.
+    horizon = sky_horizon(m)
+    m.vis.rgba.fog = HAZE if horizon is None else (*horizon, 1.0)
     m.vis.map.fogstart = 1.0
     m.vis.map.fogend = 3.5
     # The scene's light is a spot 1.5 m up; from the low camera the edge of its
     # shadow map lies on the floor as dark wedges along the horizon. A low sun
     # from the side shades the same and casts shadows the whole floor agrees on.
     sun = np.array([0.35, -0.25, -1.0])
+    sun /= np.linalg.norm(sun)
     m.light_type[0] = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
-    m.light_dir[0] = sun / np.linalg.norm(sun)
-    m.vis.headlight.ambient = (0.35, 0.35, 0.35)
-    m.vis.headlight.diffuse = (0.40, 0.40, 0.40)
+    m.light_dir[0] = sun
+    # A directional light's shadow map is a box along its ray from its position:
+    # the ray has to pass where the robot is. The daylight scene's sun stands at
+    # (-3, -2, 4), and turned to this direction its shadows fell 3 m away.
+    m.light_pos[0] = np.array([0.3, 0.0, 0.0]) - 2.5 * sun
+    if horizon is None:
+        m.vis.headlight.ambient = (0.35, 0.35, 0.35)
+        m.vis.headlight.diffuse = (0.40, 0.40, 0.40)
+    else:
+        # The scene's sun is brighter and bluer-lit than the training light;
+        # at the values above the floor washed out to white.
+        m.light_ambient[0] = (0.10, 0.11, 0.13)
+        m.light_diffuse[0] = (0.70, 0.68, 0.64)
+        m.vis.headlight.ambient = (0.30, 0.30, 0.30)
+        m.vis.headlight.diffuse = (0.30, 0.30, 0.30)
 
 
 def _add_disc(scene, x: float, y: float, r: float, rgba=INK_RGBA) -> bool:
@@ -130,6 +158,7 @@ class Replay:
     def __init__(self, run: Path):
         self.m = mujoco.MjModel.from_binary_path(str(run / "model.mjb"))
         dress(self.m)
+        self.sky = sky_horizon(self.m) is not None
         self.d = mujoco.MjData(self.m)
         self.log = ink.Log(run / "log.npz")
         if self.log.qpos is None:
@@ -149,6 +178,13 @@ class Replay:
         return mujoco.Renderer(self.m, shot.height, shot.width, max_geom=20000)
 
 
+def text_frame(plan) -> tuple[tuple[float, float], float]:
+    """The text's centre and its larger extent: a single character's em square, or
+    the whole of a longer text."""
+    x0, x1, y0, y1 = plan.bounds()
+    return ((x0 + x1) / 2, (y0 + y1) / 2), max(plan.size, x1 - x0, y1 - y0)
+
+
 def ink_points(marks) -> np.ndarray:
     """(n, 4) rows of t, x, y, radius: every inked point once, in time order, so
     a frame at time t draws a prefix."""
@@ -164,7 +200,7 @@ def frame(rp: Replay, r: mujoco.Renderer, shot: cameras.Shot, cam, pts, t: float
     r.update_scene(rp.d, camera=cam)
     r.scene.flags[mujoco.mjtRndFlag.mjRND_FOG] = True
     r.scene.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = False
-    if shot.elevation > -60:
+    if shot.elevation > -60 and not rp.sky:
         _backdrop(r.scene, shot)
     if pts is not None:
         n = np.searchsorted(pts[:, 0], t, side="right")
@@ -255,11 +291,116 @@ def check(rp: Replay, shots) -> float:
     return worst
 
 
+#: The film: following the character being written from behind the robot's
+#: shoulder, then pulling back to the whole text and the robot beside it.
+FILM_FOLLOW = {"distance": 0.80, "elevation": -55.0, "azimuth": 12.0}
+FILM_REVEAL_ELEVATION = -70.0
+#: Seconds of simulation the camera takes to settle on a new target (both ways in
+#: time, so it moves before a cut rather than lagging after it).
+FILM_TAU = 1.5
+FILM_HOLD = 5.0                   # s on the finished text at the end
+#: Where the robot stands for the outro, beside the text: `write.OUTRO_STAND_OFF`.
+OUTRO_STAND_OFF = 0.22
+
+
+def _fit_distance(x_extent: float, y_extent: float, shot: cameras.Shot) -> float:
+    """How far a camera looking straight down at az 0 (+x up, -y right) has to be
+    for x_extent x y_extent metres of floor to fill the frame."""
+    v = math.tan(math.radians(shot.fovy) / 2)
+    h = v * shot.width / shot.height
+    return max(x_extent / (2 * v), y_extent / (2 * h))
+
+
+def film_track(rp: Replay, times: np.ndarray) -> list[cameras.Shot]:
+    """One Shot per time: the character being written, then the reveal."""
+    plan, log = rp.plan, rp.log
+    outro = rp.log.phases.index("outro") if "outro" in rp.log.phases else -1
+    char_of = np.array([s.char for s in plan.strokes])
+    centres = {}
+    for c in set(char_of.tolist()):
+        xy = np.concatenate([s.xy for s in plan.strokes if s.char == c])
+        centres[c] = (xy.min(0) + xy.max(0)) / 2
+    x0, x1, y0, y1 = plan.bounds()
+    # The text and the robot beside it (its trunk at y0 - OUTRO_STAND_OFF).
+    ry0 = y0 - OUTRO_STAND_OFF - 0.12
+    probe = cameras.Shot("film", (0, 0, 0), 1.0, 0.0, -90.0)
+    # Never nearer than a metre: the robot stands 15 cm off the floor, and nearer
+    # than that it fills the frame at the edge.
+    reveal_d = max(1.0, 1.3 * _fit_distance(x1 - x0 + 0.08, y1 - ry0 + 0.04, probe))
+    reveal = np.array([(x0 + x1) / 2 - 0.04, (y1 + ry0) / 2, 0.0, reveal_d,
+                       FILM_REVEAL_ELEVATION, 0.0])
+    end = rp.t[-1]
+    targets = np.zeros((len(times), 6))
+    revealing = False
+    for k, t in enumerate(times):
+        i = int(np.clip(np.searchsorted(rp.t, t), 0, len(rp.t) - 1))
+        revealing = revealing or t >= end or log["phase"][i] == outro
+        if revealing:
+            targets[k] = reveal
+            continue
+        s = int(log["stroke"][i])
+        c = int(char_of[s]) if 0 <= s < len(char_of) else 0
+        # Between the character and the robot, which stands 10-30 cm from it.
+        cx, cy = centres[c]
+        bx, by = log["bx"][i], log["by"][i]
+        sep = math.hypot(cx - bx, cy - by)
+        targets[k] = (0.55 * cx + 0.45 * bx, 0.55 * cy + 0.45 * by, 0.0,
+                      max(FILM_FOLLOW["distance"], 1.6 * sep + 0.35),
+                      FILM_FOLLOW["elevation"], FILM_FOLLOW["azimuth"])
+    # Zero-phase smoothing in simulated time: forward, then backward.
+    dt = np.diff(times, prepend=times[0])
+    a = 1.0 - np.exp(-np.maximum(dt, 1e-3) / FILM_TAU)
+    sm = targets.copy()
+    for k in range(1, len(sm)):
+        sm[k] = sm[k - 1] + a[k] * (targets[k] - sm[k - 1])
+    for k in range(len(sm) - 2, -1, -1):
+        sm[k] = sm[k + 1] + a[k + 1] * (sm[k] - sm[k + 1])
+    # The shot can lag the action; never the start and the end, which hold still.
+    return [cameras.Shot("film", tuple(v[:3]), float(v[3]), float(v[5]), float(v[4]))
+            for v in sm]
+
+
+def render_film(rp: Replay, marks, out: Path, fps: float) -> None:
+    """film.mp4: real time, the camera following, then the reveal and a hold."""
+    import imageio.v2 as imageio
+
+    end = rp.t[-1]
+    times = np.concatenate([np.arange(0.0, end, 1.0 / fps),
+                            end + np.arange(1, int(FILM_HOLD * fps) + 1) / fps])
+    shots = film_track(rp, times)
+    r = rp.renderer(shots[0])
+    pts = ink_points(marks)
+    writer = imageio.get_writer(out, fps=fps, codec="libx264", quality=8, macro_block_size=8)
+    for k, (t, shot) in enumerate(zip(times, shots)):
+        writer.append_data(frame(rp, r, shot, shot.mjv_camera(), pts, min(t, end)))
+        if k % 200 == 0:
+            print(f"  film: frame {k}/{len(times)}", flush=True)
+    writer.close()
+    r.close()
+
+
+def render_result(rp: Replay, marks, out: Path) -> None:
+    """result.png: the finished text from straight above, 1920 x 1080, and the
+    robot beside it if it stands in the frame."""
+    from PIL import Image
+
+    x0, x1, y0, y1 = rp.plan.bounds()
+    probe = cameras.Shot("result", (0, 0, 0), 1.0, 0.0, -90.0, width=1920, height=1080)
+    d = 1.25 * _fit_distance(x1 - x0, y1 - y0, probe)
+    shot = cameras.Shot("result", ((x0 + x1) / 2, (y0 + y1) / 2, 0.0), d, 0.0, -90.0,
+                        width=1920, height=1080)
+    r = rp.renderer(shot)
+    Image.fromarray(frame(rp, r, shot, shot.mjv_camera(), ink_points(marks),
+                          float(rp.t[-1]))).save(out)
+    r.close()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run", type=Path, help="a write.py output directory")
-    ap.add_argument("--shots", nargs="+", default=["top", "low"])
+    ap.add_argument("--shots", nargs="+", default=["film", "top", "low"],
+                    help="film (following, then the reveal), top, low")
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--no-ink", action="store_true", help="clean plates, no ink drawn")
     ap.add_argument("--gif-speed", type=float, default=6.0)
@@ -271,7 +412,7 @@ def main() -> int:
     args = ap.parse_args()
 
     rp = Replay(args.run)
-    shots = {s.name: s for s in cameras.shots(rp.plan.origin, rp.plan.size)}
+    shots = {s.name: s for s in cameras.shots(*text_frame(rp.plan))}
     if args.check:
         worst = check(rp, list(shots.values()))
         print(f"worst marker error: {worst:.1f} px")
@@ -285,23 +426,34 @@ def main() -> int:
 
         pts = None if args.no_ink else ink_points(ms)
         for name in args.shots:
-            shot = shots[name]
-            r = rp.renderer(shot)
-            for t in args.still:
-                t = min(t, float(rp.t[-1]))
+            ts = [min(t, float(rp.t[-1]) + FILM_HOLD) for t in args.still]
+            track = (film_track(rp, np.arange(0.0, max(ts) + 1e-9, 1.0 / args.fps))
+                     if name == "film" else None)
+            for t in ts:
+                shot = track[min(round(t * args.fps), len(track) - 1)] if track \
+                    else shots[name]
+                r = rp.renderer(shot)
                 path = args.run / f"{name}_{t:05.1f}.png"
-                Image.fromarray(frame(rp, r, shot, shot.mjv_camera(), pts, t)).save(path)
+                img = frame(rp, r, shot, shot.mjv_camera(), pts, min(t, float(rp.t[-1])))
+                Image.fromarray(img).save(path)
+                r.close()
                 print(f"[render] wrote {path}")
-            r.close()
         return 0
     data = ink.to_json(ms, rp.plan, list(shots.values()))
     (args.run / "ink.json").write_text(json.dumps(data))
     (args.run / "ink.svg").write_text(ink.to_svg(ms, rp.plan))
     print(f"[render] {len(ms)} marks, {sum(len(m.t) for m in ms)} points -> ink.json, ink.svg")
 
+    if not args.no_ink:
+        render_result(rp, ms, args.run / "result.png")
+        print(f"[render] wrote {args.run / 'result.png'}")
     suffix = "" if not args.no_ink else "_plate"
     for name in args.shots:
         path = args.run / f"{name}{suffix}.mp4"
+        if name == "film":
+            render_film(rp, ms if not args.no_ink else [], path, args.fps)
+            print(f"[render] wrote {path}")
+            continue
         render_shot(rp, shots[name], ms, path, args.fps, 1.0, not args.no_ink)
         print(f"[render] wrote {path}")
     if not args.no_gif and not args.no_ink:
