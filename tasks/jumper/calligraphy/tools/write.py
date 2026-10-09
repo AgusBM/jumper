@@ -174,10 +174,16 @@ KI = 4.0                          # 1/s
 CORR_MAX = 0.015                  # m
 #: Pressing. The hair is a cone that may go into the floor (`brush.py`), and the
 #: ink is its section there. The depth that gives a width depends on how the brush
-#: leans, so the depth starts from a guess -- vertical depth = width, right for a
-#: brush leaning ~40 deg -- and an integrator on the measured section moves the
-#: tip up or down until the width is `press * width_full`.
+#: leans, so the depth starts from a guess -- width = WIDTH_PER_DEPTH x depth --
+#: and an integrator on the measured section moves the tip up or down until the
+#: width is `press * width_full`.
 KW = 3.0                          # m of depth per m of width error per s
+#: Measured while writing, the legs held: width / depth 1.69-1.76 (median, p10-p90
+#: 1.62-1.88; hold11-hold13, 2026-10-09). The guess used to be 1.0, and the
+#: integrator, at KW, cannot take back 5 mm of depth inside a stroke's head (the
+#: first 12% of it, 0.1-0.2 s): every head came out 21-24 mm wide against the
+#: 12 mm HEAD asks for, a round blot at the start of each stroke.
+WIDTH_PER_DEPTH = 1.7
 ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 
 
@@ -708,7 +714,7 @@ def main() -> int:
         line(start, above, REACH_SPEED, REACH, k, c.start)
 
         # lower
-        z0 = -s.press[c.start] * width_full
+        z0 = -s.press[c.start] * width_full / WIDTH_PER_DEPTH
         n = int(LOWER_S / dt)
         corr[:] = 0.0
         zcorr[:] = 0.0
@@ -733,7 +739,7 @@ def main() -> int:
         while u < c.end:
             u = min(float(c.end), u + per_step)
             xy, press = at(u)
-            tgt = np.array([*xy, -press * width_full])
+            tgt = np.array([*xy, -press * width_full / WIDTH_PER_DEPTH])
             err = track(xy, at(u + lead)[0], tgt[2], press)
             step(WRITE, k, int(u), tgt, err)
             misses = misses + 1 if err > IK_RETRY else 0
@@ -751,7 +757,7 @@ def main() -> int:
 
         # lift
         pe = s.xy[c.end]
-        ze = -s.press[c.end] * width_full + zcorr[0]
+        ze = -s.press[c.end] * width_full / WIDTH_PER_DEPTH + zcorr[0]
         n = int(LIFT_S / dt)
         for i in range(1, n + 1):
             tgt = np.array([*pe, ze + (armmod.HOVER - ze) * (i / n)])

@@ -159,6 +159,10 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
 - Held, the stance's height is the walking policy's, 101-109 mm, so the band is
   where the arm reaches at both 100 and 110 mm (`HELD_Z`); built at one height,
   the other left the ends of strokes 3 and 4 out of reach.
+- The brush goes in to 1/1.7 of the width it is to leave (`WIDTH_PER_DEPTH`,
+  measured), and the head of a stroke is pressed no harder than its body
+  (`hanzi.HEAD` 1.0): the arm's lag already makes it 1.5x as wide. The heads were
+  21-24 mm round blots before; now 12.6-13.1 mm, the hair at most 7.5 mm deep.
 - With the brush down, the IK never takes a solution on the arm's other branch:
   with LF_J3 at its limit it once did, and swung the hair 83 mm up and 100 mm off
   the stroke mid-stroke.

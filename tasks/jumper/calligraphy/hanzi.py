@@ -57,8 +57,13 @@ EM_CENTER = (512.0, 388.0)
 PRESS_IN = 0.06
 PRESS_OUT = 0.25
 #: The head of the stroke is pressed this much harder than its body, and the tail
-#: leaves at this fraction of it.
-HEAD = 1.35
+#: leaves at this fraction of it. No harder, on purpose: the press reaches HEAD over
+#: 0.1-0.15 s with the brush already moving, the arm follows 0.1 s late and goes
+#: ~2 mm deeper than asked, and that alone gives the head its weight -- 12.6-13.1 mm
+#: wide against a body of 8.6-8.9 (hold20-hold21, 2026-10-09). At 1.35 the heads
+#: were 16-17 mm, round blots; pressing the head in place before moving did not
+#: help (16-20 mm, hold18-hold19).
+HEAD = 1.0
 TAIL = 0.35
 
 
