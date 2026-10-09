@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 4: the two shots of a `write.py` run, and the ink for the compositor.
+"""Step 4: the shots of a `write.py` run, and the ink for the compositor.
 
     MUJOCO_GL=osmesa python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u65e0/<run>
     MUJOCO_GL=osmesa python tasks/jumper/calligraphy/tools/render.py <run> --check
@@ -7,8 +7,12 @@
 
 Writes into the run's directory:
 
-    top.mp4, low.mp4    the overhead and the low shot, real time, ink drawn as it is laid
-                        (--no-ink for clean plates to composite onto)
+    film.mp4            real time, the camera following the character being written,
+                        then pulling back to the whole text and the robot beside it
+                        (its outro), and holding on it -- the shot for a video
+    top.mp4, low.mp4    the overhead and the low shot, fixed, real time, ink drawn as it
+                        is laid (--no-ink for clean plates to composite onto)
+    result.png          the finished text from above, 1920 x 1080: a thumbnail
     wu.gif              the overhead shot sped up, small, for the README
     ink.json            every mark: time, floor xy, depth, planned press, width, and its
                         pixels in each shot; the shots' intrinsics and poses
