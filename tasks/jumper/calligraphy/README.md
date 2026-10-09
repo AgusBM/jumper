@@ -24,13 +24,12 @@ Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
 | `wu.gif` | 4 | the overhead shot at 6x, 480x360, for the README |
 | `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
 
-> **Status (2026-10-08): being reworked.** The brush is now a thick handle gripped by
-> the shut claw and a black cone of hair that sinks into the floor (no contact
-> forces); every stroke is meant to be written whole with the trunk still, the
-> character sized so its longest stroke fits the arm's reach. Strokes 1 and 2 of
-> 无 now come out whole with the trunk still to 3-7 mm; strokes 3 and 4 do not
-> yet -- see [Where it stands](#where-it-stands). The gif in the repository's
-> README is from the earlier version (runs 6-7 below).
+> **Status (2026-10-09): 无 at 12.1 cm, every stroke whole.** The brush is a thick
+> handle gripped by the shut claw and a black cone of hair that sinks into the floor.
+> A fine-tuned `jumper.calligraphy` policy holds the trunk still while the arm
+> writes, and five_foot's shipped policy does the walking -- see
+> [Where it stands](#where-it-stands). The gif in the repository's README is still
+> from the earlier version (runs 6-7 below).
 
 **Two things live here.** The tools write a character with a policy; the task
 `jumper.calligraphy` trains that policy -- see [Training the fix](#training-the-fix).
@@ -141,7 +140,38 @@ the README quotes.
 
 ## Where it stands
 
-Measured after the rework (2026-10-08, native:cpu, MuJoCo 3.11.0):
+**Two policies, one each for what they do well.** With the fine-tuned checkpoint
+(`out/model_89599.pt`, 3000 iterations from five_foot's on an RTX 3090) writing and
+the shipped five_foot one walking (`write.py --walk-checkpoint`, the default), three
+runs of 无 from three random starts (2026-10-09, native:cpu, 4-core container):
+
+| | strokes / stretches | seams | ink centre to stroke, median / p95 / max | trunk while writing | hair in the floor elsewhere |
+|---|---|---|---|---|---|
+| ft2 | 4 / 4 | 0 | 0.7 / 3.6 / 6.0 mm | 0.3-2.0 mm, <= 0.2 deg | 4 steps |
+| ft3 | 4 / 4 | 0 | 0.7 / 3.8 / 5.9 mm | 0.8-1.4 mm, <= 0.5 deg | 3 steps |
+| ft4 | 4 / 4 | 0 | 0.7 / 3.7 / 5.4 mm | 0.3-1.3 mm, <= 0.3 deg | 0 steps |
+
+```bash
+python tasks/jumper/calligraphy/tools/stability.py --checkpoint tasks/jumper/calligraphy/out/model_89599.pt --palm-x-min 0.10
+python tasks/jumper/calligraphy/tools/write.py --checkpoint tasks/jumper/calligraphy/out/model_89599.pt --palm-x-min 0.10
+```
+
+- **The fine-tuned policy holds still.** It holds the trunk still at 61 of 62 points
+  of the training band (shipped: 44 of 57 of a smaller one), moves it 3.6-5.7 mm
+  as the arm unfolds (shipped: ~20 mm, and 10 mm up) and 0-2 mm while the arm writes.
+- **It does not walk slowly.** It stands for any command under ~0.15 m/s: a push of
+  0.07 m/s for 0.12-1.5 s moved it 0.3-2.1 mm (shipped: 4-100 mm), and write.py's
+  closed-loop walks at 0.08 m/s did not arrive. With it walking, the trunk never
+  got where a stroke was in reach and strokes were cut into one-sample pieces.
+  `hold_position` pays standing still and nothing in this task pays a slow walk,
+  so that is what it learned. Hence the second policy: both are the same stateless
+  MLP, so write.py switches between them from one step to the next.
+- **Walks are approaches.** The shipped policy stops 2.2-6.6 mm from a goal 4-8 cm
+  away and 5.8-17.4 mm from one 1 cm away (16 walks, V_MIN 0.15), so a short
+  correction backs off to 4 cm first and comes in again.
+
+Measured before the fine-tune, on the shipped policy alone (2026-10-08, native:cpu,
+MuJoCo 3.11.0):
 
 - **The trunk holds still while the arm writes** -- 2.5-7.4 mm and under 1.3 deg
   through strokes 1 and 2 (run 15) -- once the brush no longer pushes on the floor
