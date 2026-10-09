@@ -50,7 +50,7 @@ from . import brush
 
 PREFIX = "robot/"
 #: Bumped whenever `reach_map` changes what it keeps, so the cache rebuilds.
-REACH_VERSION = 3
+REACH_VERSION = 5
 ARM_JOINTS = ("LF_J0_joint", "LF_J1_joint", "LF_J2_joint", "LF_J3_joint")
 FINGER_JOINT = "LF_J4_joint"
 #: The arm folded against the trunk, where five_foot walks with it.
@@ -194,8 +194,9 @@ class Arm:
                          self.d.site_xpos[self.palm_tip][2],
                          self.d.xpos[self.finger_tip][2]))
 
-    def self_contact(self, q: np.ndarray) -> tuple[bool, bool]:
-        """Whether the claw or the brush is within SELF_CLEARANCE of (the trunk or
+    def self_contact(self, q: np.ndarray, clearance: float = SELF_CLEARANCE
+                     ) -> tuple[bool, bool]:
+        """Whether the claw or the brush is within `clearance` of (the trunk or
         another leg, the arm's own shoulder or upper arm), with the trunk as the
         last `set_state` left it."""
         self.d.qpos[self.qadr] = q
@@ -207,13 +208,13 @@ class Arm:
                 break
             if (own if self._own[i] else trunk):
                 continue
-            if np.linalg.norm(x[a] - x[b]) - r[a] - r[b] > SELF_CLEARANCE:
+            if np.linalg.norm(x[a] - x[b]) - r[a] - r[b] > clearance:
                 continue
             # Always asked out to 5 cm: with a short `distmax` two meshes that
             # overlap come back as `distmax`, not as touching (palm and upper arm,
             # 0.0 at 0.05 and 6.0 mm at 0.006).
             if mujoco.mj_geomDistance(self.m, self.d, a, b, 0.05, self._fromto) \
-                    < SELF_CLEARANCE:
+                    < clearance:
                 if self._own[i]:
                     own = True
                 else:
@@ -298,7 +299,13 @@ class Arm:
                     return False
             elif c.dist < 0:
                 return False
-        return True
+        # The arm against the trunk and the other legs, which the model's contacts
+        # do not see: writing a stroke near the robot put the palm and the forearm
+        # 7-18 mm into the trunk by the camera (跳跳, tt1, 2026-10-10). Into it, not
+        # near it: the collision hulls are larger than the meshes, and keeping
+        # SELF_CLEARANCE off them too took the band from 205 to 163 cm^2 and 跳跳
+        # from 12.2 cm to 9.2.
+        return not self.self_contact(q, 0.0)[0]
 
 
 def reach_map(arm: Arm, standing_qpos: np.ndarray, cell: float = 0.005,
