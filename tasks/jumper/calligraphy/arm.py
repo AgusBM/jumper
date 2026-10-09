@@ -221,6 +221,34 @@ class Arm:
                     trunk = True
         return trunk, own
 
+    def ik_clear(self, target: np.ndarray, q0: np.ndarray, max_step: float
+                 ) -> np.ndarray | None:
+        """A solution for `target` near `q0` that keeps the claw, the brush and the
+        forearm out of the trunk and the other legs, or None.
+
+        Four joints put a point in space, so one direction of the arm is free: the
+        elbow turning about the line from the shoulder to the tip. Solving from
+        seeds moved along it finds the same tip with the elbow elsewhere; the
+        nearest such solution within `max_step` (rad, any joint) is taken. With the
+        trunk as the last `set_state` left it."""
+        self.d.qpos[self.qadr] = q0
+        mujoco.mj_kinematics(self.m, self.d)
+        mujoco.mj_comPos(self.m, self.d)
+        mujoco.mj_jacSite(self.m, self.d, self._jacp, None, self.tip)
+        free = np.linalg.svd(self._jacp[:, self.vadr])[2][-1]
+        for k in (0.1, 0.2, 0.3, 0.45, 0.6, 0.8):
+            best = None
+            for sign in (1.0, -1.0):
+                q, err = self.ik(target, q0 + sign * k * free)
+                step = float(np.abs(q - q0).max())
+                if err > 1e-3 or step > max_step or self.self_contact(q, 0.0)[0]:
+                    continue
+                if best is None or step < best[1]:
+                    best = (q, step)
+            if best is not None:
+                return best[0]
+        return None
+
     def _path_cost(self, q_from, legs, samples):
         """(steps near the trunk or another leg, steps near the arm's own upper arm,
         -lowest floor clearance) along `legs`: smaller is better. The floor first,

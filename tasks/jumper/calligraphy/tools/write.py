@@ -175,6 +175,9 @@ OUTRO_DANCE = (
 OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
 #: The trunk heights the band must hold at when the legs are held (--hold-legs).
 HELD_Z = (0.100, 0.110)           # m
+#: Off the floor, how far one step may turn the elbow to keep the arm out of the
+#: trunk (`Arm.ik_clear`); on it, BRANCH_JUMP.
+CLEAR_JUMP = math.radians(45.0)
 #: With the brush down, a retry is taken only if no joint moves further than this.
 BRANCH_JUMP = math.radians(20.0)
 #: Tracking. The arm's PD lags a moving target -- 5.7 mm behind at 4 cm/s, 2.1 mm
@@ -448,6 +451,14 @@ def main() -> int:
             near = np.abs(q2 - q_cmd).max() < BRANCH_JUMP
             if err2 < err and (near or not on_floor):
                 q, err = q2, err2
+        if err < IK_RETRY and arm.self_contact(q, 0.0)[0]:
+            # The same tip with the elbow turned out of the trunk: the band is built
+            # from one solution per cell at a nominal stance, and over strokes near
+            # the robot the solve at hand still put the palm and the forearm 4-13
+            # mm into its front, by the camera (跳跳, tt5 and pmrun runs).
+            alt = arm.ik_clear(target, q, BRANCH_JUMP if on_floor else CLEAR_JUMP)
+            if alt is not None:
+                q = alt
         q_cmd = q
         return err
 
