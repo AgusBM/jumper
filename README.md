@@ -22,15 +22,17 @@ claw and writes **无** (*wú*, "nothing"), stroke by stroke, in stroke order.
 - **The strokes** come from [Make Me a Hanzi](https://github.com/skishore/makemeahanzi):
   each stroke's median line, smoothed and scaled onto the floor, with a press
   profile — pressed in at the start, lifted towards the end.
-- **The walking** is Jumper's own trained five-legged gait (`jumper.five_foot`),
-  unchanged. The sixth leg is the arm that writes, moved by inverse kinematics
-  against where the body really is.
-- **The arm reaches a curved band about 6 cm deep in front of the robot**, and the
-  character is 30 cm across. So the robot cuts each stroke into stretches it can
-  reach, walks between them with the arm folded (it cannot walk with it out),
-  and holds the brush on the stone at about 1 N.
-- **Measured:** the brush tip stays 1.1–1.2 mm from the stroke (median), touches
-  the floor nowhere else, and the whole character takes 86–103 s of simulated time.
+- **The arm writes every stroke whole while the body stands still**, the way a
+  person writes on a sheet: the robot walks between strokes with the arm folded,
+  unfolds it, and the brush — a black cone of hair gripped in the shut claw —
+  sinks into the stone to make the stroke thicker where it is pressed. The arm
+  is moved by inverse kinematics against where the body really is.
+- **Two policies.** Jumper's five-legged gait (`jumper.five_foot`) walks; a version
+  of it fine-tuned to stand still while the arm is out (`jumper.calligraphy`,
+  3000 iterations on one RTX 3090) holds the body while the arm writes.
+- **Measured:** 无 at 12.1 cm, all four strokes whole in every run; the ink is
+  0.7 mm from the stroke (median, p95 3.6–4.0 mm), the body moves 0.2–2.3 mm while
+  a stroke is written, and no ink falls outside the strokes.
 
 Everything — the planner, the controller, the renders and the stroke data for
 painting the ink in post-production — is in

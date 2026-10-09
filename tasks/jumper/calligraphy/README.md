@@ -166,6 +166,13 @@ python tasks/jumper/calligraphy/tools/write.py --checkpoint tasks/jumper/calligr
   `hold_position` pays standing still and nothing in this task pays a slow walk,
   so that is what it learned. Hence the second policy: both are the same stateless
   MLP, so write.py switches between them from one step to the next.
+- **The unfold is aimed off.** Switching to the writing policy as the arm unfolds
+  moves the trunk the same way every time -- +7 to +22 mm forward, 0 to 19 mm
+  right, 0 to 4 deg clockwise, and 2 cm up (18 unfolds in ft2-ft4). Relearned per
+  stroke, it cost each stroke a fold and four walks (无's last: 31 s for 3 s of
+  writing, 90-100 s in all). Carried from stroke to stroke as a running estimate
+  that every walk aims short by, 无 takes 67-73 s and only the first stroke is ever
+  refolded (ft5-ft7: 0 seams, ink p95 3.6-3.8 mm, trunk 0.2-1.5 mm while writing).
 - **Walks are approaches.** The shipped policy stops 2.2-6.6 mm from a goal 4-8 cm
   away and 5.8-17.4 mm from one 1 cm away (16 walks, V_MIN 0.15), so a short
   correction backs off to 4 cm first and comes in again.

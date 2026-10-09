@@ -428,6 +428,14 @@ def main() -> int:
     done: list = []
     replans = dict.fromkeys(range(len(plan.strokes)), 0)
     pieces = dict.fromkeys(range(len(plan.strokes)), 0)
+    #: How far unfolding moves the trunk, in its own frame (forward, left, yaw): a
+    #: running estimate, aimed off by on every walk. With five_foot's policy walking
+    #: and a fine-tuned one writing, the switch at the unfold moved it +7 to +22 mm
+    #: forward, 0 to 19 mm right and 0 to 4 deg clockwise, the same way every time
+    #: (18 unfolds in three runs, 2026-10-09); learned per stretch only, each stroke
+    #: paid a fold and four walks to find it again -- 31 s for 3 s of 无's last stroke.
+    unfold_b = np.zeros(3)
+    unfolds = 0
     shifts: dict[int, np.ndarray] = {}
 
     def hold_tip(k, sample, seconds):
@@ -493,10 +501,11 @@ def main() -> int:
                     step(WALK, k, sample, None, np.nan)
             settle(k, sample)
 
-        def walk_to(c=c, k=k):
-            """Walk, folded, to the station; then walk in again until the stroke fits."""
-            walk(c.base, c.yaw, k, c.start)
-            nudge_to(c, k)
+        def walk_to(shift, c=c, k=k):
+            """Walk, folded, to the station less the `shift` the unfold will add; then
+            walk in again until the stroke fits."""
+            walk(c.base - shift[:2], _wrap(c.yaw - shift[2]), k, c.start)
+            nudge_to(c, k, shift=tuple(shift))
 
         def nudge_to(c, k, s=s, shift=(0.0, 0.0, 0.0)):
             """Walk in again until the stroke fits from where the trunk will be once
@@ -513,11 +522,14 @@ def main() -> int:
         # Position, unfold, and check from where the trunk is once the arm is out:
         # unfolding moves the trunk too, so the check before it is not the one
         # that counts. If the stroke no longer fits, fold, nudge and unfold again.
-        shift = np.zeros(3)
         for cycle in range(UNFOLD_TRIES):
             if folded:
+                _, _, yaw = state()
+                cy, sy = math.cos(yaw), math.sin(yaw)
+                shift = np.array([cy * unfold_b[0] - sy * unfold_b[1],
+                                  sy * unfold_b[0] + cy * unfold_b[1], unfold_b[2]])
                 if cycle == 0:
-                    walk_to()
+                    walk_to(shift)
                 else:
                     nudge_to(c, k, shift=tuple(shift))
                 qpos, base, yaw = state()
@@ -536,11 +548,15 @@ def main() -> int:
                 unfold_to(q_goal, k, c.start, high)
                 folded = False
                 start = high
-                # Unfolding to the same pose shoves the trunk the same way each time:
-                # remember by how much, and aim the next nudge that much short.
+                # Unfolding shoves the trunk the same way each time, in the trunk's
+                # frame: remember by how much, for every later walk to aim short by.
                 _, b2, y2 = state()
-                moved = np.array([b2[0] - before[0], b2[1] - before[1], _wrap(y2 - before[2])])
-                shift = moved if cycle == 0 else 0.5 * (shift + moved)
+                d = b2[:2] - before[:2]
+                cy, sy = math.cos(before[2]), math.sin(before[2])
+                moved = np.array([cy * d[0] + sy * d[1], -sy * d[0] + cy * d[1],
+                                  _wrap(y2 - before[2])])
+                unfold_b = moved if unfolds == 0 else 0.5 * (unfold_b + moved)
+                unfolds += 1
             else:
                 qpos, _, _ = state()
                 arm.set_state(qpos)
