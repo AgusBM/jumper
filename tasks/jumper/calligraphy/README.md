@@ -58,6 +58,24 @@ MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u
   written, then the reveal and five seconds on the result. `result.png` is the
   result from above at 1920 x 1080.
 
+Measured (2026-10-10, native:cpu, five_foot's shipped policy, the legs held): 跳跳
+at 12.0 cm a character, 26 strokes, one seam, the ink 1.0 mm from the stroke
+(median, p95 4.5), 232 s simulated with the outro; 无 in the same build at 12.0
+cm, no seam, p95 2.9. Writing a text this long found four ways for the arm to go
+through the trunk that 无 never had, each fixed where it arose:
+
+- a writing pose in the trunk (the band now rejects one, `Arm.writable`);
+- the lift before a fold raising the elbow into it (`clear_high`);
+- the lift at a stroke's end aiming the brush's axis back towards it (it now goes
+  straight up);
+- a solve that still leaves the arm in it (`Arm.ik_clear` turns the elbow out).
+
+What is left is the upper arm's hull grazing the trunk's by up to 4 mm for
+0.2-0.4 s, where the meshes do not touch. And after a seam the arm once jumped to
+another pose, swinging 145 deg in 0.1 s into the floor: hover moves now fold
+instead when the line to the next start needs another pose, and no arm command
+moves more than 4 deg a step.
+
 ## What is where
 
 | file | what it does |
