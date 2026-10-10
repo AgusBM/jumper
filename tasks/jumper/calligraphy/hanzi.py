@@ -66,8 +66,8 @@ PRESS_OUT = 0.25
 #: dive slower (`write.PLUNGE_MAX`), and on 跳's short strokes the head then passed
 #: before the depth came: heads 5.8 mm against bodies of 9.0 (plunge_tt). Set down
 #: in place at 1.25 its section cannot blot: 无's heads 10.1 mm against 8.1
-#: (claw2_wu, 2026-10-10). Where the claw holds the hair up (`write.CLAW_GAIN`),
-#: 跳跳's heads are as wide as its bodies, 7.3 and 7.8 mm (claw2_tt).
+#: (claw2_wu, 2026-10-10). The bellied hair, set down with the last stroke's depth
+#: correction: 7.5 mm against 5.5 (belly2_wu).
 HEAD = 1.25
 TAIL = 0.35
 

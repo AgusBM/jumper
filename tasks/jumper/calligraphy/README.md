@@ -25,8 +25,8 @@ Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
 | `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
 
 > **Status (2026-10-09): 无 at 12.2 cm, every stroke whole, the feet still.** The
-> brush is a thick handle the claw closes onto and a black cone of hair that
-> sinks into the floor. five_foot's shipped policy walks; while the arm is out its
+> brush is a thick handle the claw closes onto and a black, pointed tuft of hair
+> that sinks into the floor. five_foot's shipped policy walks; while the arm is out its
 > last action is held, so the legs stand like a statue -- see
 > [Where it stands](#where-it-stands).
 
@@ -86,7 +86,7 @@ moves more than 4 deg a step.
 |---|---|
 | `hanzi.py` | a character's medians (Make Me a Hanzi) -> stroke trajectories on the floor, with a press profile |
 | `data/` | one verbatim `graphics.txt` entry per character, and the Arphic Public License they are under |
-| `brush.py` | the brush: a 13 mm handle the claw closes onto, a black cone of hair that may sink into the floor; the ink's width is the cone's section there |
+| `brush.py` | the brush: a 13 mm handle the claw closes onto, a black tuft of hair as wide, bellied to a point, that may sink into the floor; the ink's width is its section there |
 | `sim.py` | the environment, policy and the two commands taken over from the operator, shared by the tools |
 | `tools/stability.py` | where in the reach band the policy holds the trunk still with the arm out |
 | `env_cfg.py`, `rl_cfg.py` | the task `jumper.calligraphy`: five_foot's config with the brush, the writing command and `hold_position` |
@@ -155,7 +155,7 @@ intrinsics and pose. So a compositor can lay the ink down frame by frame on the
 clean plates (`render.py --no-ink`) without knowing anything about the simulation.
 
 - The hair counts as ink only while the arm is lowering, writing or lifting, and
-  only where the cone is below the floor; the ink is centred where its axis meets
+  only where the hair is below the floor; the ink is centred where its axis meets
   the floor and is as wide as its section there (`brush.ink_point`,
   `brush.section_width`). Gaps of up to 0.1 s inside a stretch are bridged.
 - The depth and the planned press are there for any other width rule.
@@ -202,12 +202,17 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
 - Held, the stance's height is the walking policy's, 101-109 mm, so the band is
   where the arm reaches at both 100 and 110 mm (`HELD_Z`); built at one height,
   the other left the ends of strokes 3 and 4 out of reach.
-- The brush goes in as deep as the width it is to leave needs, from a measured
-  guess (`WIDTH_PER_DEPTH`) that an integrator on the ink's width then corrects.
-  With the first brush, its hair 28 mm across, the heads were 21-24 mm round blots
-  before the guess was measured and 12.6-13.1 mm after.
-- The hair is now as wide as the handle, 13 mm, so it goes twice as deep for the
-  same ink, 9-13 mm, and three things followed from that:
+- The brush goes in as deep as the width it is to leave needs: from the hair's own
+  profile at the brush's present lean (`brush.depth_for`), corrected by an
+  integrator on the ink's width, and each stroke set down with the correction the
+  last one ended on -- most of it is the arm sagging ~2 mm below its command. With
+  the first brush, its hair 28 mm across, the heads were 21-24 mm round blots while
+  the guess was 1 mm of depth per mm of width, and 12.6-13.1 mm once it was
+  measured.
+- The hair is now as wide as the handle, 13 mm, and bellied to a point. As a
+  straight cone that wide, the share of it under the floor is the stroke's width
+  over the base's, whatever the lean: 58% for a 7.8 mm stroke, a brush seen sunk
+  into the stone. Going that deep, three things followed, and stay as safeguards:
   - Dived into at the old pace, a head was commanded down at 195 mm/s, the arm
     overshot to 16 mm, and stopping it tipped the trunk forward over its front
     feet: up to 14 mm, in 6 of 26 strokes of 跳跳. The brush now goes down no
@@ -222,9 +227,11 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
     sags 2-3 mm below its command, and a bound from where it was held the claw at
     0); those strokes are a little thinner.
 
-  无 with all three: no seam, the ink 0.7 mm from the stroke (median, p95 2.1),
-  heads 10.1 mm against bodies of 8.1, the claw at least 2.5 mm off the floor, the
-  trunk still to 0.2 mm (claw2_wu, 2026-10-10, native:cpu).
+  Bellied, and with the stroke 5.5 mm instead of 7.8 (`--width` 0.046), 27% of the
+  hair is under the floor (median; 49% at most). 无: no seam, the ink 0.7 mm from
+  the stroke (median, p95 2.2), heads 7.5 mm against bodies of 5.5, the claw at
+  least 5.1 mm off the floor, the trunk still to 0.1 mm (belly2_wu, 2026-10-10,
+  native:cpu).
 - The arm unfolds and folds around the robot, not through it. The model gives the
   carried arm no contacts with the trunk, the other legs or itself, and the fold
   path was chosen for floor clearance alone: the first unfold of every run swept
