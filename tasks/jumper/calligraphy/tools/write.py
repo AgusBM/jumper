@@ -175,6 +175,11 @@ OUTRO_DANCE = (
     (0.0, 0.0, 0.0, 1.0), (15.0, 0.0, 0.0, 1.6), (0.0, 0.0, 0.0, 1.2),
 )
 OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
+#: The palm's limit when the legs are held (--hold-legs). arm.PALM_X_MIN, 0.13, is
+#: where the shipped policy holds still while it reacts to the arm; held, the legs do
+#: not react, and at 0.10 the band is 200 cm^2 against 176 and 跳跳 12.0 cm against
+#: 11.5 (fin1, pmrun0.13, 2026-10-10, native:cpu) -- every run since hold11 wrote so.
+PALM_X_HELD = 0.10
 #: The trunk heights the band must hold at when the legs are held (--hold-legs).
 HELD_Z = (0.100, 0.110)           # m
 #: The most any arm joint's command moves in one control step (200 deg/s).
@@ -278,9 +283,9 @@ def main() -> int:
                          "A jumper.calligraphy policy stands for any command under ~0.15 "
                          "m/s, so five_foot's shipped one walks by default")
     ap.add_argument("--palm-x-min", type=float, default=None,
-                    help="how far ahead of the trunk the palm must stay, m (arm.PALM_X_MIN, "
-                         "where the shipped policy holds still; a jumper.calligraphy policy "
-                         "is trained down to 0.10)")
+                    help="how far ahead of the trunk the palm must stay, m (0.10 with the "
+                         "legs held; arm.PALM_X_MIN, 0.13, with --no-hold-legs, where the "
+                         "shipped policy holds still)")
     ap.add_argument("--plan-only", action="store_true",
                     help="cut the plan into stretches, draw them, and stop")
     ap.add_argument("--max-stretches", type=int, default=None)
@@ -320,7 +325,9 @@ def main() -> int:
     steer, pose_cmd, dt = sm.steer, sm.pose, sm.dt
 
     # ── Where the arm can write, and the cut ─────────────────────────────────
-    arm = armmod.Arm(env.sim.mj_model, palm_x_min=args.palm_x_min or armmod.PALM_X_MIN)
+    if args.palm_x_min is None:
+        args.palm_x_min = PALM_X_HELD if args.hold_legs else armmod.PALM_X_MIN
+    arm = armmod.Arm(env.sim.mj_model, palm_x_min=args.palm_x_min)
     standing = sim.standing_qpos(env.sim.mj_model)
     t0 = time.time()
     if args.hold_legs:

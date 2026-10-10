@@ -39,8 +39,19 @@ order, top to bottom — then steps aside, turns to the text, dances and bows.
   brush never pass through the body. One stroke of the 26 is written in two
   pieces. 无 alone: 12.0 cm, every stroke whole, p95 2.1 mm.
 
-Everything — the planner, the controller, the renders and the stroke data for
-painting the ink in post-production — is in
+Try it — nothing to train, no GPU needed to write:
+
+```bash
+git clone -b calligraphy https://github.com/AgusBM/jumper && cd jumper
+python -m venv .venv && source .venv/bin/activate && pip install -e .
+python tasks/jumper/calligraphy/tools/write.py --text 跳跳          # ~25 min on a 4-core CPU
+python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/<run>
+```
+
+`render.py` leaves `film.mp4` and `result.png` in the run's directory; on Linux it
+needs `MUJOCO_GL=egl` (or `osmesa` without a GPU). Other characters, the options and
+everything else — the planner, the controller, the renders and the stroke data for
+painting the ink in post-production — are in
 [`tasks/jumper/calligraphy/`](tasks/jumper/calligraphy/README.md).
 
 ## One sentence to design an appearance

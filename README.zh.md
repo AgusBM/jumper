@@ -1,4 +1,4 @@
-<!-- tracks: README.md @ sha256:49cb6780dcac0554 -->
+<!-- tracks: README.md @ sha256:7744041dc90b64f8 -->
 
 ![跳跳](docs/media/jumper-hero-zh.png)
 
@@ -32,7 +32,18 @@
   写一笔时机身移动 0.2 毫米，手臂展开时脚最多移动 4.3 毫米，手臂和毛笔从不穿过机身。
   26 笔中有一笔分两段写成。单写“无”：12.0 厘米，每一笔都完整，p95 为 2.1 毫米。
 
-规划器、控制器、渲染以及供后期描墨的笔画数据都在
+动手试试——无需训练，写字也不需要 GPU：
+
+```bash
+git clone -b calligraphy https://github.com/AgusBM/jumper && cd jumper
+python -m venv .venv && source .venv/bin/activate && pip install -e .
+python tasks/jumper/calligraphy/tools/write.py --text 跳跳          # 4 核 CPU 约 25 分钟
+python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/<run>
+```
+
+`render.py` 会在该次运行的目录里生成 `film.mp4` 和 `result.png`；在 Linux 上需要
+`MUJOCO_GL=egl`（没有 GPU 时用 `osmesa`）。其他汉字、各项选项，以及规划器、控制器、
+渲染和供后期描墨的笔画数据，都在
 [`tasks/jumper/calligraphy/`](tasks/jumper/calligraphy/README.md)。
 
 ## 一句话，设计外观

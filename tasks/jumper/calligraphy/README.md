@@ -1,62 +1,77 @@
-# Calligraphy — Jumper writes a Chinese character on the floor
+# Calligraphy — Jumper writes Chinese on the floor
 
-Jumper holds a brush in its carried claw and writes a character on the floor, stroke
-by stroke, the way 地书 (water calligraphy on paving stones) is written: walking to
-where the next stroke can be reached, putting the brush down, writing, lifting it.
+Jumper holds a brush in its carried claw and writes Chinese characters on the
+floor, stroke by stroke, the way 地书 (water calligraphy on paving stones) is
+written: walking to where the next stroke can be reached, putting the brush down,
+writing, lifting it. At the end it walks to the text's side, turns to it, dances
+-- the body twisting over its feet, a roll, a bow -- and stands while the camera
+pulls back to the whole text.
+
+Nothing has to be trained. `jumper.five_foot`'s shipped policy
+(`tasks/jumper/five_foot/out/example/model_86600.pt`) walks; while the arm is out
+its last action is held, so the legs stand like a statue; the arm is moved by
+inverse kinematics and the walking by a steering loop.
+
+## Try it
+
+On Linux, macOS or Windows; no GPU is needed to write, one helps to render.
 
 ```bash
-python tasks/jumper/calligraphy/tools/strokes.py                # step 1: 无 -> plan.json + plan.svg
-python tasks/jumper/calligraphy/tools/write.py --plan-only      # the cut into stretches, drawn
-python tasks/jumper/calligraphy/tools/write.py                  # step 2: write it, ~5 min on CPU
-MUJOCO_GL=osmesa python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u65e0/<run>
-                                                                # step 4: two shots, gif, ink export
+git clone -b calligraphy https://github.com/AgusBM/jumper && cd jumper
+python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -e .                                       # more in docs/AGENT_SETUP.md
+
+python tasks/jumper/calligraphy/tools/write.py --text 跳跳
+python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/<run>
 ```
 
-Outputs go to `logs/calligraphy/u65e0/<run>/` (the character's code point):
+- `write.py` simulates the robot writing and prints where it put the run
+  (`[write] wrote logs/calligraphy/u8df3-u8df3/<date-time>`; `--out <dir>` chooses).
+  跳跳 takes about 25 minutes on a 4-core CPU, 无 alone about 5. The first run also
+  works out where the arm can reach, 4-6 minutes, and keeps it in
+  `logs/calligraphy/cache/`.
+- `render.py` replays the run into films and pictures. On Linux it needs
+  `MUJOCO_GL=egl` with an NVIDIA GPU, or `MUJOCO_GL=osmesa` without one (slow: render
+  only the main shot with `--shots film`); on macOS and Windows leave it unset.
+- `--text` takes any characters with stroke data in `data/`: 无 and 跳 are there.
+  Any other, from Make Me a Hanzi:
 
-| file | step | what it is |
+  ```bash
+  curl -LO https://raw.githubusercontent.com/skishore/makemeahanzi/master/graphics.txt
+  python tasks/jumper/calligraphy/tools/strokes.py --import 永 --graphics graphics.txt
+  python tasks/jumper/calligraphy/tools/write.py --text 永
+  ```
+
+- `--layout horizontal` writes left to right instead of top to bottom; `--scene
+  beach`, `studio` or `none` changes the sky; `--no-outro` stops at the last stroke.
+  A run with more than one or two seams (`grep SEAM`) is worth running again.
+
+What a run leaves in its directory:
+
+| file | from | what it is |
 |---|---|---|
-| `plan.json`, `stretches.json` | 1, 2 | the strokes on the floor, and how they were cut and written |
-| `log.npz` | 3 | one row per 20 ms control step -- phase, stroke, target and measured tip, the ink point and width, trunk pose, command -- and the full `qpos` |
-| `model.mjb` | 3 | the compiled model that `qpos` belongs to |
-| `topview.png` | 2 | the plan beside where the brush touched the floor |
-| `top.mp4`, `low.mp4` | 4 | overhead and low shots, real time, 960x720 at 30 fps, ink drawn as it is laid (`--no-ink`: clean plates) |
-| `wu.gif` | 4 | the overhead shot at 6x, 480x360, for the README |
-| `ink.json`, `ink.svg` | 3, 4 | the ink, for the compositor: see below |
+| `film.mp4` | render | the shot for a video: real time, following the character being written, then pulling back to the whole text and five seconds on it |
+| `result.png` | render | the finished text from above, 1920 x 1080: a thumbnail |
+| `top.mp4`, `low.mp4` | render | overhead and low shots, fixed, real time, ink drawn as it is laid (`--no-ink`: clean plates) |
+| `wu.gif` | render | the overhead shot at 6x, 480 x 360, for a README |
+| `ink.json`, `ink.svg` | render | the ink, for a compositor: see [below](#the-ink-for-post-production) |
+| `plan.json`, `stretches.json`, `topview.png` | write | the strokes on the floor, how they were cut into stretches, and where the brush touched |
+| `log.npz`, `model.mjb` | write | one row per 20 ms control step and the full `qpos`, and the compiled model they belong to: what `render.py` replays |
 
-> **Status (2026-10-09): 无 at 12.2 cm, every stroke whole, the feet still.** The
-> brush is a thick handle the claw closes onto and a black, pointed tuft of hair
-> that sinks into the floor. five_foot's shipped policy walks; while the arm is out its
-> last action is held, so the legs stand like a statue -- see
-> [Where it stands](#where-it-stands).
+> **Status (2026-10-10): 跳跳 at 12.0 cm a character, one stroke of the 26 in two
+> pieces, the ink 0.9 mm from the stroke, a quarter of the hair in the stone, the
+> legs still.** The brush is a thick handle the claw closes onto and a black tuft of
+> hair as wide, bellied to a point -- see [Where it stands](#where-it-stands).
 
-**Two things live here.** The tools write a character with a policy; the task
-`jumper.calligraphy` trains that policy -- see [Training the fix](#training-the-fix).
-With the shipped policy nothing is trained: `jumper.five_foot`'s shipped policy
-(`tasks/jumper/five_foot/out/example/model_86600.pt`) walks and stands on five legs,
-and everything here sits on top of it -- the arm that policy leaves out of its action
-is driven by inverse kinematics, and its velocity command by a steering loop. There
-is no `env_cfg.py` or `rl_cfg.py`, so the registry does not see the directory.
+**The task here is an experiment the tools no longer need.** `jumper.calligraphy`
+fine-tunes five_foot to stand still while the arm writes; three rounds of it did
+not stop the feet sliding, and holding the legs did -- see
+[Training the fix](#training-the-fix).
 
-## A longer film: 跳跳
+## 跳跳, the film
 
 Jumper's name in Chinese, 跳跳 (*tiàotiào*), top to bottom as 地书 is usually
-written, then the outro: the robot walks to the text's side, turns to it, dances
-(the body twisting over its feet, a roll, a bow) and stands while the camera pulls
-back to the whole text.
-
-```bash
-python tasks/jumper/calligraphy/tools/write.py --text 跳跳 --palm-x-min 0.10 --out logs/calligraphy/u8df3-u8df3/film
-MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/film
-```
-
-- `--text` takes any characters with stroke data in `data/` (`tools/strokes.py
-  --import`); `--layout horizontal` writes them left to right.
-- `--scene daylight` (the default) puts the repository's daylight sky behind the
-  low shots; `--no-outro` stops at the last stroke.
-- `film.mp4` is the shot for a video: real time, following the character being
-  written, then the reveal and five seconds on the result. `result.png` is the
-  result from above at 1920 x 1080.
+written, then the outro -- the commands above.
 
 Measured (2026-10-10, native:cpu, five_foot's shipped policy, the legs held): 跳跳
 at 12.0 cm a character, 26 strokes, one seam (in the middle of the eighth, where
@@ -198,7 +213,7 @@ native:cpu, 4-core container):
 | hold13 | 13.6 cm | 0 | 0.7 / 4.2 / 7.7 mm | <= 0.1 mm | <= 2.3 / 0.2 / 1.0 mm |
 
 ```bash
-python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
+python tasks/jumper/calligraphy/tools/write.py     # the palm limit is 0.10 with the legs held
 ```
 
 - Held, the stance's height is the walking policy's, 101-109 mm, so the band is
