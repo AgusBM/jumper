@@ -51,10 +51,12 @@ BASE_SITE = "brush_base"    # the centre of the cone's base, where the hair meet
 MOUTH_Z = -0.0034
 HANDLE_Y = (0.055, 0.160)
 HANDLE_RADIUS = 0.0065
-#: The hair: a cone from its base at CONE_Y to its apex CONE_LENGTH further out.
+#: The hair: a cone from its base at CONE_Y to its apex CONE_LENGTH further out,
+#: its base as wide as the handle it grows from. It was 28 mm wide at first, twice
+#: the handle: a tuft rather than a brush in the film.
 CONE_Y = 0.160
 CONE_LENGTH = 0.026
-CONE_RADIUS = 0.014
+CONE_RADIUS = HANDLE_RADIUS
 TIP_Y = CONE_Y + CONE_LENGTH
 #: tan of the cone's half-angle: the section's radius per metre of hair below the floor.
 CONE_SLOPE = CONE_RADIUS / CONE_LENGTH

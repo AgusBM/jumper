@@ -195,12 +195,13 @@ CORR_MAX = 0.015                  # m
 #: and an integrator on the measured section moves the tip up or down until the
 #: width is `press * width_full`.
 KW = 3.0                          # m of depth per m of width error per s
-#: Measured while writing, the legs held: width / depth 1.69-1.76 (median, p10-p90
-#: 1.62-1.88; hold11-hold13, 2026-10-09). The guess used to be 1.0, and the
-#: integrator, at KW, cannot take back 5 mm of depth inside a stroke's head (the
-#: first 12% of it, 0.1-0.2 s): every head came out 21-24 mm wide against the
-#: 12 mm HEAD asks for, a round blot at the start of each stroke.
-WIDTH_PER_DEPTH = 1.7
+#: With the 28 mm cone it was measured while writing, the legs held: width / depth
+#: 1.69-1.76 (median, p10-p90 1.62-1.88; hold11-hold13, 2026-10-09). The guess
+#: used to be 1.0, and the integrator, at KW, cannot take back 5 mm of depth inside
+#: a stroke's head (the first 12% of it, 0.1-0.2 s): every head came out 21-24 mm
+#: wide against the 12 mm HEAD asks for, a round blot at the start of each stroke.
+#: The 13 mm cone halves the slope, so 1.7 scaled by it -- to be measured again.
+WIDTH_PER_DEPTH = 0.8
 ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 
 

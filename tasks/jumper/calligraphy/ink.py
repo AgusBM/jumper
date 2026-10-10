@@ -27,6 +27,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from tasks.jumper.calligraphy import brush
+
 #: Phases of `write.py` in which a contact is ink (lower, write, lift).
 INK_PHASES = ("lower", "write", "lift")
 #: Gaps in contact up to this long, inside one writing stretch, do not break a mark.
@@ -101,8 +103,9 @@ def to_json(ms: list[Mark], plan, shots) -> dict:
         "character": plan.character,
         "size_m": plan.size,
         "frame": "world metres; character up = +x, right = -y; floor at z = 0",
-        "width_rule": "the brush's hair is a cone (radius 14 mm over 26 mm) sunk into "
-                      "the floor; width = its section where its axis meets the floor",
+        "width_rule": f"the brush's hair is a cone (radius {brush.CONE_RADIUS * 1000:g} mm "
+                      f"over {brush.CONE_LENGTH * 1000:g} mm) sunk into the floor; "
+                      "width = its section where its axis meets the floor",
         "cameras": [s.to_json() for s in shots],
         "marks": [],
     }
