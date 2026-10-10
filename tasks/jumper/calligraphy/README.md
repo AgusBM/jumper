@@ -59,10 +59,13 @@ MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u
   result from above at 1920 x 1080.
 
 Measured (2026-10-10, native:cpu, five_foot's shipped policy, the legs held): 跳跳
-at 12.0 cm a character, 26 strokes, one seam, the ink 1.0 mm from the stroke
-(median, p95 4.5), 232 s simulated with the outro; 无 in the same build at 12.0
-cm, no seam, p95 2.9. Writing a text this long found four ways for the arm to go
-through the trunk that 无 never had, each fixed where it arose:
+at 12.0 cm a character, 26 strokes, no seam, the ink 1.0 mm from the stroke
+(median, p95 2.9), the claw at least 1.0 mm off the floor and the trunk still to
+0.3 mm while the arm writes, 219 s simulated with the outro; 无 in the same build
+at 12.0 cm, no seam, p95 2.1. That is with the 13 mm hair (see "Where it stands");
+the film in the fork's README was rendered with the 28 mm one, one seam and p95
+4.5. Writing a text this long found four ways for the arm to go through the trunk
+that 无 never had, each fixed where it arose:
 
 - a writing pose in the trunk (the band now rejects one, `Arm.writable`);
 - the lift before a fold raising the elbow into it (`clear_high`);
@@ -70,8 +73,9 @@ through the trunk that 无 never had, each fixed where it arose:
   straight up);
 - a solve that still leaves the arm in it (`Arm.ik_clear` turns the elbow out).
 
-What is left is the upper arm's hull grazing the trunk's by up to 4 mm for
-0.2-0.4 s, where the meshes do not touch. And after a seam the arm once jumped to
+With the 28 mm hair the upper arm's hull still grazed the trunk's by up to 4 mm
+for 0.2-0.4 s, where the meshes do not touch; with the 13 mm one nothing of the arm
+comes within the trunk or the other legs. And after a seam the arm once jumped to
 another pose, swinging 145 deg in 0.1 s into the floor: hover moves now fold
 instead when the line to the next start needs another pose, and no arm command
 moves more than 4 deg a step.
@@ -198,10 +202,29 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
 - Held, the stance's height is the walking policy's, 101-109 mm, so the band is
   where the arm reaches at both 100 and 110 mm (`HELD_Z`); built at one height,
   the other left the ends of strokes 3 and 4 out of reach.
-- The brush goes in to 1/1.7 of the width it is to leave (`WIDTH_PER_DEPTH`,
-  measured), and the head of a stroke is pressed no harder than its body
-  (`hanzi.HEAD` 1.0): the arm's lag already makes it 1.5x as wide. The heads were
-  21-24 mm round blots before; now 12.6-13.1 mm, the hair at most 7.5 mm deep.
+- The brush goes in as deep as the width it is to leave needs, from a measured
+  guess (`WIDTH_PER_DEPTH`) that an integrator on the ink's width then corrects.
+  With the first brush, its hair 28 mm across, the heads were 21-24 mm round blots
+  before the guess was measured and 12.6-13.1 mm after.
+- The hair is now as wide as the handle, 13 mm, so it goes twice as deep for the
+  same ink, 9-13 mm, and three things followed from that:
+  - Dived into at the old pace, a head was commanded down at 195 mm/s, the arm
+    overshot to 16 mm, and stopping it tipped the trunk forward over its front
+    feet: up to 14 mm, in 6 of 26 strokes of 跳跳. The brush now goes down no
+    faster than 90 mm/s (`PLUNGE_MAX`), the old cone's pace.
+  - At that pace the head of a short stroke passed before the depth came (跳跳's
+    heads 5.8 mm against bodies of 9.0), so the brush is set down to the head's
+    press in place, before it moves (`hanzi.HEAD` 1.25) -- the 顿笔 a person makes.
+    The old cone blotted doing that; this one's section cannot.
+  - Where the claw is rolled finger-down the finger's tip hangs 11-15 mm above the
+    hair's apex, and it scraped the floor in 无's two horizontal strokes. The hair
+    goes no deeper than keeps the claw 3 mm up (`CLAW_GAIN`, an integrator: the arm
+    sags 2-3 mm below its command, and a bound from where it was held the claw at
+    0); those strokes are a little thinner.
+
+  无 with all three: no seam, the ink 0.7 mm from the stroke (median, p95 2.1),
+  heads 10.1 mm against bodies of 8.1, the claw at least 2.5 mm off the floor, the
+  trunk still to 0.2 mm (claw2_wu, 2026-10-10, native:cpu).
 - The arm unfolds and folds around the robot, not through it. The model gives the
   carried arm no contacts with the trunk, the other legs or itself, and the fold
   path was chosen for floor clearance alone: the first unfold of every run swept

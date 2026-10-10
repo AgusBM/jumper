@@ -153,7 +153,9 @@ SETTLE_S = 0.6
 #: from there (run 9, 2026-10-08).
 UNFOLD_S = 3.0
 REACH_SPEED = 0.06                # m/s, hover moves between stretches
-LOWER_S, LIFT_S = 0.35, 0.30
+#: Lowering sets the brush down to a stroke's head in place, ~26 mm from HOVER along
+#: a smoothstep, whose peak is 1.5x its mean: 0.45 s keeps it under PLUNGE_MAX.
+LOWER_S, LIFT_S = 0.45, 0.30
 #: Unfolding and folding go through a point this high above the floor, and the
 #: tip travels between it and HOVER in a straight line. Interpolated in joint space
 #: all the way, the tip swept the floor on 35-56 of ~100 steps of each unfold and
@@ -212,6 +214,17 @@ ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 #: its front feet -- up to 14 mm, in 6 of 26 strokes (thin_tt, 2026-10-10,
 #: native:cpu). The width integrator holds while this limit does.
 PLUNGE_MAX = 0.09                 # m/s
+#: And no deeper than keeps the claw `arm.FLOOR_CLEARANCE` off the floor. The 13 mm
+#: cone goes twice as deep as the 28 mm one for the same ink, and where the claw is
+#: rolled finger-down -- 无's two horizontal strokes -- the finger's tip hangs only
+#: 11-15 mm above the apex: it was within 1 mm of the floor for 31-47 steps of 无
+#: and in it, by up to 0.2 mm, for 11-18 (plunge_wu, head_wu, 2026-10-10), where the
+#: 28 mm cone kept it 5 mm up. The arm's free direction does not lift it: about half
+#: those steps have no solution within BRANCH_JUMP that does, and the rest gain 0.5 mm.
+#: An integrator on the command, not a bound from where the apex is: the arm sags
+#: 2-3 mm below what it is commanded, so a bound 3 mm above the actual apex held the
+#: claw at 0 (claw_wu). Above the clearance the dive slows as the claw nears it.
+CLAW_GAIN = 5.0                   # 1/s
 
 
 def _shift_to_fit(s, c, base, yaw, rm, dist, margin):
@@ -429,6 +442,7 @@ def main() -> int:
         tip = arm.d.site_xpos[arm.tip]
         base_site = arm.d.site_xpos[arm.base]
         tip_now[:] = tip
+        claw_now[0] = arm.claw_floor()
         width_now[0] = brush.section_width(tip, base_site)
         ink_now[:] = brush.ink_point(tip, base_site)
         tgt = target if target is not None else (np.nan, np.nan, np.nan)
@@ -436,7 +450,7 @@ def main() -> int:
         rows.append([sim_t, phase, done[k].stroke if 0 <= k < len(done) else -1, k, sample,
                      *tgt, *tip, *ink_now[:2], float(width_now[0] > 0), width_now[0],
                      -min(tip[2], 0.0),
-                     *base, yaw, residual, *steer.values])
+                     *base, yaw, residual, *steer.values, claw_now[0]])
 
     def solve(target, on_floor=False):
         """IK from the last command; from the reach map's seed if that misses.
@@ -491,6 +505,7 @@ def main() -> int:
     corr = np.zeros(2)
     zcorr = np.zeros(1)
     z_cmd = np.zeros(1)               # the apex height last commanded, for PLUNGE_MAX
+    claw_now = np.ones(1)             # the claw's height above the floor
     dist_map = rm.margin()
     # Signed: inside the band, the distance to its edge; outside, minus the distance
     # to it. Checked against -overreach once the arm is out.
@@ -506,13 +521,14 @@ def main() -> int:
         # ink sits from it now, and integrate out what that misses.
         corr = np.clip(corr + KI * dt * (true_xy - ink_now[:2]), -CORR_MAX, CORR_MAX)
         lead_xy = lead_xy + (tip_now[:2] - ink_now[:2])
-        floor = z_cmd[0] - PLUNGE_MAX * dt
+        lowest = z_cmd[0] - dt * min(PLUNGE_MAX,
+                                     CLAW_GAIN * (claw_now[0] - armmod.FLOOR_CLEARANCE))
         if press is not None:
             zc = np.clip(zcorr[0] + KW * dt * (width_now[0] - press * width_full), *ZCORR)
             z = max(z + zc, -armmod.DEPTH_MAX)
-            if z >= floor:
+            if z >= lowest:
                 zcorr[0] = zc
-        z_cmd[0] = z = max(z, floor)
+        z_cmd[0] = z = max(z, lowest)
         return solve(np.array([*(lead_xy + corr), z]), on_floor=True)
 
     def unfold_to(q_goal, k, sample, target):
@@ -836,7 +852,8 @@ def main() -> int:
         zcorr[:] = 0.0
         z_cmd[:] = armmod.HOVER
         for i in range(1, n + 1):
-            tgt = np.array([*p0, armmod.HOVER + (z0 - armmod.HOVER) * (i / n)])
+            f = i / n
+            tgt = np.array([*p0, armmod.HOVER + (z0 - armmod.HOVER) * f * f * (3 - 2 * f)])
             err = track(p0, p0, tgt[2])
             step(LOWER, k, c.start, tgt, err)
 
@@ -928,7 +945,7 @@ def main() -> int:
 
     cols = ["t", "phase", "stroke", "stretch", "sample", "tx", "ty", "tz", "px", "py", "pz",
             "ix", "iy", "contact", "width", "depth", "bx", "by", "bz", "byaw", "ik_residual",
-            "cmd_vx", "cmd_vy", "cmd_wz"]
+            "cmd_vx", "cmd_vy", "cmd_wz", "claw"]
     log = np.asarray(rows, dtype=np.float64)
     np.savez(out / "log.npz", log=log, columns=np.array(cols), phases=np.array(PHASES),
              qpos=np.asarray(qpos_rows), dt=dt)
@@ -969,6 +986,7 @@ def _report(log: np.ndarray, cols: list[str]) -> None:
         print(f"  stroke {int(b[0, c['stroke']]) + 1}: trunk moved {drift * 1000:.1f} mm and "
               f"turned {turn:+.1f} deg while the arm wrote")
     print(f"  IK residual while writing: max {np.nanmax(w[:, c['ik_residual']]) * 1000:.1f} mm")
+    print(f"  claw nearest the floor while writing: {w[:, c['claw']].min() * 1000:.1f} mm")
 
 
 def _topview(out: Path, plan, cut, log, rm, cols=None) -> None:

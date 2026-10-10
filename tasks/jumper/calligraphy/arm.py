@@ -129,6 +129,10 @@ class Arm:
                  if model.geom_bodyid[g] != 0 and (model.geom(g).name or "").endswith(
                      ("meshcol", "meshcol1", "meshcol2", "meshcol3", "meshcol4", "meshcol5"))]
         claw = [g for g in robot if name(g).startswith(("LF_palm", "LF_finger"))]
+        self._claw_verts = [
+            (g, model.mesh_vert[model.mesh_vertadr[m]:model.mesh_vertadr[m] + model.mesh_vertnum[m]])
+            for g in claw if model.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH
+            for m in [model.geom_dataid[g]]]
         claw += [model.geom(PREFIX + n).id for n in brush.GEOMS]
         forearm = [g for g in robot if name(g) == "LF_forearm_link"]
         rest = [g for g in robot if g not in claw and g not in forearm]
@@ -150,6 +154,13 @@ class Arm:
     def set_state(self, qpos: np.ndarray) -> None:
         self.d.qpos[:] = qpos
         mujoco.mj_kinematics(self.m, self.d)
+
+    def claw_floor(self) -> float:
+        """Height above the floor of the lowest point of the claw's collision meshes,
+        the robot as the last `set_state` left it. Not the brush's: its hair is meant
+        to be in the floor."""
+        x, r = self.d.geom_xpos, self.d.geom_xmat
+        return min(float((v @ r[g, 6:9]).min() + x[g, 2]) for g, v in self._claw_verts)
 
     def tip_pos(self, q: np.ndarray | None = None) -> np.ndarray:
         if q is not None:

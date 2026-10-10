@@ -53,17 +53,22 @@ DATA = Path(__file__).resolve().parent / "data"
 EM = 1024.0
 EM_CENTER = (512.0, 388.0)
 
-#: Fraction of each stroke's length spent pressing the brush in, and lifting it off.
+#: Fraction of each stroke's length spent at the head's press, and as much again
+#: easing to the body's; and the fraction spent lifting the brush off.
 PRESS_IN = 0.06
 PRESS_OUT = 0.25
 #: The head of the stroke is pressed this much harder than its body, and the tail
-#: leaves at this fraction of it. No harder, on purpose: the press reaches HEAD over
-#: 0.1-0.15 s with the brush already moving, the arm follows 0.1 s late and goes
-#: ~2 mm deeper than asked, and that alone gives the head its weight -- 12.6-13.1 mm
-#: wide against a body of 8.6-8.9 (hold20-hold21, 2026-10-09). At 1.35 the heads
-#: were 16-17 mm, round blots; pressing the head in place before moving did not
-#: help (16-20 mm, hold18-hold19).
-HEAD = 1.0
+#: leaves at this fraction of it. The brush is set down to HEAD in place, before it
+#: moves. With the 28 mm cone that was 1.0, the press rising to it while the brush
+#: already moved: the arm's lag alone made the heads 12.6-13.1 mm against bodies of
+#: 8.6-8.9 (hold20-hold21, 2026-10-09), and at 1.35, or set down in place, they
+#: were 16-20 mm blots (hold18-hold19). The 13 mm cone, going twice as deep, has to
+#: dive slower (`write.PLUNGE_MAX`), and on 跳's short strokes the head then passed
+#: before the depth came: heads 5.8 mm against bodies of 9.0 (plunge_tt). Set down
+#: in place at 1.25 its section cannot blot: 无's heads 10.1 mm against 8.1
+#: (claw2_wu, 2026-10-10). Where the claw holds the hair up (`write.CLAW_GAIN`),
+#: 跳跳's heads are as wide as its bodies, 7.3 and 7.8 mm (claw2_tt).
+HEAD = 1.25
 TAIL = 0.35
 
 
@@ -139,16 +144,15 @@ def press_profile(n: int) -> np.ndarray:
 
     A person starts a stroke by setting the brush down **harder** than they carry it
     -- 顿笔, the pause-press that gives a stroke its heavy head -- then eases to the
-    stroke's own weight and lifts towards the end. So: up to `HEAD` over the first
+    stroke's own weight and lifts towards the end. So: `HEAD` from the first sample
+    -- the controller sets the brush down to it in place, before moving -- for
     `PRESS_IN`, settling to 1 by `2 * PRESS_IN`, and down to `TAIL` over the last
     `PRESS_OUT`. Never 0 inside the stroke: a brush lifted all the way before the
     end leaves a gap; the controller lifts it after the last sample.
     """
     u = np.linspace(0.0, 1.0, n)
-    rise = np.clip(u / PRESS_IN, 0.0, 1.0)
-    rise = rise * rise * (3 - 2 * rise)
     settle = np.clip((u - PRESS_IN) / PRESS_IN, 0.0, 1.0)
-    head = HEAD * rise - (HEAD - 1.0) * settle * settle * (3 - 2 * settle)
+    head = HEAD - (HEAD - 1.0) * settle * settle * (3 - 2 * settle)
     fall = 1.0 - (1.0 - TAIL) * np.clip((u - (1.0 - PRESS_OUT)) / PRESS_OUT, 0.0, 1.0)
     return head * fall
 
