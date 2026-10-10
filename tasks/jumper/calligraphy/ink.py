@@ -6,10 +6,10 @@ of points.
 
 ## What counts as ink
 
-The hair is a cone that may go into the floor (`brush.py`). A control step leaves
-ink when the cone's apex is below the floor **and** the arm is lowering, writing
-or lifting; the ink is centred where the cone's axis meets the floor and is as
-wide as the cone's section there (`brush.ink_point`, `brush.section_width`, logged
+The hair may go into the floor (`brush.py`). A control step leaves
+ink when the hair's tip is below the floor **and** the arm is lowering, writing
+or lifting; the ink is centred where the hair's axis meets the floor and is as
+wide as its section there (`brush.ink_point`, `brush.section_width`, logged
 by `write.py` as `ix`, `iy`, `width`). Anywhere else it would be the brush
 dipping on the way somewhere; `write.py` reports that as stray ink and it is not
 painted here, so a fault shows in the report rather than being quietly drawn.
@@ -45,7 +45,7 @@ class Mark:
     xyz: np.ndarray      # (n, 3) m, the tip
     depth: np.ndarray    # (n,) m, how far the apex is below the floor
     press: np.ndarray    # (n,) planned press, a fraction of the full width
-    width: np.ndarray    # (n,) m, the cone's section at the floor
+    width: np.ndarray    # (n,) m, the hair's section at the floor
 
 
 class Log:
@@ -103,9 +103,10 @@ def to_json(ms: list[Mark], plan, shots) -> dict:
         "character": plan.character,
         "size_m": plan.size,
         "frame": "world metres; character up = +x, right = -y; floor at z = 0",
-        "width_rule": f"the brush's hair is a cone (radius {brush.CONE_RADIUS * 1000:g} mm "
-                      f"over {brush.CONE_LENGTH * 1000:g} mm) sunk into the floor; "
-                      "width = its section where its axis meets the floor",
+        "width_rule": f"the brush's hair, {brush.HAIR_LENGTH * 1000:g} mm long, has radius "
+                      f"{brush.HAIR_RADIUS * 1000:g} mm * sin(pi/2 * s / "
+                      f"{brush.HAIR_LENGTH * 1000:g} mm) at s from its tip and is sunk into "
+                      "the floor; width = its section where its axis meets the floor",
         "cameras": [s.to_json() for s in shots],
         "marks": [],
     }

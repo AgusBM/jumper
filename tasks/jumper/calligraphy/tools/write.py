@@ -191,20 +191,18 @@ BRANCH_JUMP = math.radians(20.0)
 LEAD_S = 0.12                     # s
 KI = 4.0                          # 1/s
 CORR_MAX = 0.015                  # m
-#: Pressing. The hair is a cone that may go into the floor (`brush.py`), and the
-#: ink is its section there. The depth that gives a width depends on how the brush
-#: leans, so the depth starts from a guess -- width = WIDTH_PER_DEPTH x depth --
-#: and an integrator on the measured section moves the tip up or down until the
-#: width is `press * width_full`.
+#: Pressing. The hair may go into the floor (`brush.py`), and the ink is its
+#: section there. The depth starts from the hair's own profile at the brush's
+#: present lean (`brush.depth_for`), and an integrator on the measured section
+#: moves the tip up or down until the width is `press * width_full`.
 KW = 3.0                          # m of depth per m of width error per s
-#: With the 28 mm cone it was measured while writing, the legs held: width / depth
-#: 1.69-1.76 (median, p10-p90 1.62-1.88; hold11-hold13, 2026-10-09). The guess
-#: used to be 1.0, and the integrator, at KW, cannot take back 5 mm of depth inside
-#: a stroke's head (the first 12% of it, 0.1-0.2 s): every head came out 21-24 mm
-#: wide against the 12 mm HEAD asks for, a round blot at the start of each stroke.
-#: The 13 mm cone halves the slope; with it, 0.87 (median, p10-p90 0.81-0.91; 无
-#: at 12.0 cm, thin_wu, 2026-10-10, native:cpu).
-WIDTH_PER_DEPTH = 0.87
+#: The guess matters: it was once 1 mm of depth per mm of width, and the
+#: integrator, at KW, cannot take back 5 mm of depth inside a stroke's head (the
+#: first 12% of it, 0.1-0.2 s): every head came out 21-24 mm wide against the
+#: 12 mm HEAD asked for, a round blot at the start of each stroke. While the hair
+#: was a cone a measured ratio served -- 1.7 for the 28 mm one (hold11-hold13,
+#: 2026-10-09), 0.87 for the 13 mm one (thin_wu, 2026-10-10) -- but a bellied
+#: hair's width is not in proportion to its depth.
 ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 #: How fast the commanded apex may go down. A stroke's head reaches full press in
 #: one or two control steps on a short stroke, and the arm stopping from that dive
@@ -266,7 +264,9 @@ def main() -> int:
                     help="world xy of the character's centre; the robot starts at 0,0 "
                          "facing +x")
     ap.add_argument("--speed", type=float, default=0.03, help="writing speed, m/s")
-    ap.add_argument("--width", type=float, default=0.065,
+    # 5.5 mm at 12 cm. It was 0.065, 7.8 mm: with the hair as wide as the handle that
+    # took 58% of its length into the floor; 5.5 mm takes 28% of the bellied hair's.
+    ap.add_argument("--width", type=float, default=0.046,
                     help="the stroke's full width, as a fraction of the character's size")
     ap.add_argument("--margin", type=float, default=0.010,
                     help="how far inside the reach band every written point must be, m")
@@ -442,6 +442,7 @@ def main() -> int:
         tip = arm.d.site_xpos[arm.tip]
         base_site = arm.d.site_xpos[arm.base]
         tip_now[:] = tip
+        base_now[:] = base_site
         claw_now[0] = arm.claw_floor()
         width_now[0] = brush.section_width(tip, base_site)
         ink_now[:] = brush.ink_point(tip, base_site)
@@ -500,6 +501,7 @@ def main() -> int:
         return rm.seed[i, j]
 
     tip_now = np.zeros(3)
+    base_now = np.array([0.0, 0.0, 1.0])  # the hair's base: with tip_now, its lean
     width_now = np.zeros(1)
     ink_now = np.zeros(3)
     corr = np.zeros(2)
@@ -846,7 +848,7 @@ def main() -> int:
         line(start, above, REACH_SPEED, REACH, k, c.start)
 
         # lower
-        z0 = -s.press[c.start] * width_full / WIDTH_PER_DEPTH
+        z0 = -brush.depth_for(s.press[c.start] * width_full, tip_now, base_now)
         n = int(LOWER_S / dt)
         corr[:] = 0.0
         zcorr[:] = 0.0
@@ -873,7 +875,7 @@ def main() -> int:
         while u < c.end:
             u = min(float(c.end), u + per_step)
             xy, press = at(u)
-            tgt = np.array([*xy, -press * width_full / WIDTH_PER_DEPTH])
+            tgt = np.array([*xy, -brush.depth_for(press * width_full, tip_now, base_now)])
             err = track(xy, at(u + lead)[0], tgt[2], press)
             step(WRITE, k, int(u), tgt, err)
             misses = misses + 1 if err > IK_RETRY else 0
@@ -894,7 +896,7 @@ def main() -> int:
         # off, and aiming it there carried the apex towards the trunk until the
         # elbow went 10 mm into the shell (跳跳, tt4, a stroke near the robot).
         pe = s.xy[c.end]
-        ze = -s.press[c.end] * width_full / WIDTH_PER_DEPTH + zcorr[0]
+        ze = -brush.depth_for(s.press[c.end] * width_full, tip_now, base_now) + zcorr[0]
         a0 = tip_now[:2].copy()
         n = int(LIFT_S / dt)
         for i in range(1, n + 1):
