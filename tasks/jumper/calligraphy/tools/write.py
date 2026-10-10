@@ -200,8 +200,9 @@ KW = 3.0                          # m of depth per m of width error per s
 #: used to be 1.0, and the integrator, at KW, cannot take back 5 mm of depth inside
 #: a stroke's head (the first 12% of it, 0.1-0.2 s): every head came out 21-24 mm
 #: wide against the 12 mm HEAD asks for, a round blot at the start of each stroke.
-#: The 13 mm cone halves the slope, so 1.7 scaled by it -- to be measured again.
-WIDTH_PER_DEPTH = 0.8
+#: The 13 mm cone halves the slope; with it, 0.87 (median, p10-p90 0.81-0.91; 无
+#: at 12.0 cm, thin_wu, 2026-10-10, native:cpu).
+WIDTH_PER_DEPTH = 0.87
 ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
 
 
