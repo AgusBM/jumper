@@ -569,18 +569,32 @@ def main() -> int:
         for _ in range(int(OUTRO_HOLD_S / dt)):
             step(OUTRO, k, -1, None, np.nan)
 
-    def reaches_without_jump(target, samples=20):
+    def reaches_without_jump(target, land=None, samples=20):
         """Whether the arm, from where it is commanded now, follows a straight line
-        of the tip to `target` by small solves only."""
+        of the tip to `target` by small solves only -- and then down to `land` with
+        the claw `arm.FLOOR_CLEARANCE` off the floor there.
+
+        The pose the arm arrives in is the one it writes in, and on its branch the
+        claw can be rolled so far that the finger hangs below the hair's tip: 4.2 mm
+        up with the tip 5.7 mm up, at the first 跳's last stroke (belly2_tt, 2026-10-10).
+        The depth limit then held the brush off the floor, the stroke was cut twice
+        on nothing, and only the third try folded to the band's own pose."""
         qpos, _, _ = state()
         arm.set_state(qpos)
         q = q_cmd.copy()
         a = arm.tip_pos(q)
-        for f in np.linspace(0.0, 1.0, samples)[1:]:
-            q2, err = arm.ik(a + f * (np.asarray(target) - a), q)
+        path = [a + f * (np.asarray(target) - a) for f in np.linspace(0.0, 1.0, samples)[1:]]
+        if land is not None:
+            path += [target + f * (np.asarray(land) - target)
+                     for f in np.linspace(0.0, 1.0, 6)[1:]]
+        for p in path:
+            q2, err = arm.ik(p, q)
             if err > IK_RETRY or np.abs(q2 - q).max() > BRANCH_JUMP:
                 return False
             q = q2
+        if land is not None:
+            arm.tip_pos(q)
+            return arm.claw_floor() >= armmod.FLOOR_CLEARANCE
         return True
 
     def clear_high(xy):
@@ -706,7 +720,9 @@ def main() -> int:
         # unfolding moves the trunk too, so the check before it is not the one
         # that counts. If the stroke no longer fits, fold, nudge and unfold again.
         for cycle in range(UNFOLD_TRIES):
-            if not folded and not reaches_without_jump(above):
+            land = np.array([*p0, -brush.depth_for(s.press[c.start] * width_full,
+                                                   tip_now, base_now)])
+            if not folded and not reaches_without_jump(above, land):
                 # Out already, but the next start is not reached from this arm pose
                 # without the solve jumping to another: fold, and unfold along a
                 # planned path. Jumping, the arm swung 145 deg in 0.1 s, struck the
