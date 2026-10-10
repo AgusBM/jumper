@@ -204,6 +204,14 @@ KW = 3.0                          # m of depth per m of width error per s
 #: at 12.0 cm, thin_wu, 2026-10-10, native:cpu).
 WIDTH_PER_DEPTH = 0.87
 ZCORR = (-0.006, 0.006)           # m, how far the integrator may move the tip
+#: How fast the commanded apex may go down. A stroke's head reaches full press in
+#: one or two control steps on a short stroke, and the arm stopping from that dive
+#: jerks the trunk: the 28 mm cone dived 5 mm at 92 mm/s and the trunk moved at
+#: most 0.3 mm while 跳跳 was written (fin1); the 13 mm cone, twice as deep, dived
+#: at 195 mm/s, overshot to 16 mm below the floor and tipped the trunk forward over
+#: its front feet -- up to 14 mm, in 6 of 26 strokes (thin_tt, 2026-10-10,
+#: native:cpu). The width integrator holds while this limit does.
+PLUNGE_MAX = 0.09                 # m/s
 
 
 def _shift_to_fit(s, c, base, yaw, rm, dist, margin):
@@ -482,6 +490,7 @@ def main() -> int:
     ink_now = np.zeros(3)
     corr = np.zeros(2)
     zcorr = np.zeros(1)
+    z_cmd = np.zeros(1)               # the apex height last commanded, for PLUNGE_MAX
     dist_map = rm.margin()
     # Signed: inside the band, the distance to its edge; outside, minus the distance
     # to it. Checked against -overreach once the arm is out.
@@ -497,10 +506,13 @@ def main() -> int:
         # ink sits from it now, and integrate out what that misses.
         corr = np.clip(corr + KI * dt * (true_xy - ink_now[:2]), -CORR_MAX, CORR_MAX)
         lead_xy = lead_xy + (tip_now[:2] - ink_now[:2])
+        floor = z_cmd[0] - PLUNGE_MAX * dt
         if press is not None:
-            zcorr[0] = np.clip(zcorr[0] + KW * dt * (width_now[0] - press * width_full),
-                               *ZCORR)
-            z = max(z + zcorr[0], -armmod.DEPTH_MAX)
+            zc = np.clip(zcorr[0] + KW * dt * (width_now[0] - press * width_full), *ZCORR)
+            z = max(z + zc, -armmod.DEPTH_MAX)
+            if z >= floor:
+                zcorr[0] = zc
+        z_cmd[0] = z = max(z, floor)
         return solve(np.array([*(lead_xy + corr), z]), on_floor=True)
 
     def unfold_to(q_goal, k, sample, target):
@@ -822,6 +834,7 @@ def main() -> int:
         n = int(LOWER_S / dt)
         corr[:] = 0.0
         zcorr[:] = 0.0
+        z_cmd[:] = armmod.HOVER
         for i in range(1, n + 1):
             tgt = np.array([*p0, armmod.HOVER + (z0 - armmod.HOVER) * (i / n)])
             err = track(p0, p0, tgt[2])
