@@ -18,12 +18,12 @@ def agent_cfg() -> RslRlOnPolicyRunnerCfg:
     figure, to be judged on `Episode_Reward/hold_position` and
     `Metrics/writing/hold_drift` flattening; `--max-iterations` overrides it.
     """
+    from dataclasses import replace
+
     from ..five_foot.rl_cfg import agent_cfg as five_foot_agent_cfg
 
-    cfg = five_foot_agent_cfg()
-    cfg.experiment_name = "jumper.calligraphy"
-    cfg.max_iterations = 3000
-    return cfg
+    return replace(five_foot_agent_cfg(), experiment_name="jumper.calligraphy",
+                   max_iterations=3000)
 
 
 def runner_cls() -> type:
