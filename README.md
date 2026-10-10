@@ -12,12 +12,13 @@ This repo is Jumper’s AI toolkit for appearance, motion, and scene creation. O
 
 ## This fork: Jumper writes calligraphy · 地书
 
-![Jumper writing 无 on the floor with a brush, seen from above](docs/media/calligraphy-wu.gif)
+![Jumper writing its name, 跳跳, on the floor with a brush, seen from above](docs/media/calligraphy-wu.gif)
 
 In Chinese parks people write characters on the paving stones with a long brush
 dipped in water — 地书, "ground calligraphy" — and the characters dry and vanish.
 This fork teaches Jumper to do the same, in simulation: it holds a brush in its
-claw and writes **无** (*wú*, "nothing"), stroke by stroke, in stroke order.
+claw and writes its own name, **跳跳** (*tiàotiào*), stroke by stroke and in stroke
+order, top to bottom — then steps aside, turns to the text, dances and bows.
 
 - **The strokes** come from [Make Me a Hanzi](https://github.com/skishore/makemeahanzi):
   each stroke's median line, smoothed and scaled onto the floor, with a press
@@ -30,10 +31,11 @@ claw and writes **无** (*wú*, "nothing"), stroke by stroke, in stroke order.
 - **The legs stand like a statue while the arm writes.** Jumper's five-legged gait
   (`jumper.five_foot`) walks; once it stops, its last command to the legs is held
   until the arm has folded again, so the feet do not shuffle as the arm swings out.
-- **Measured:** 无 at 12.2 cm, all four strokes whole in every run; the ink is
-  0.7 mm from the stroke (median, p95 2.8 mm), the body moves 0.1 mm while a
-  stroke is written, the feet at most 2.3 mm while the arm unfolds, the arm and
-  the brush never pass through the body, and no ink falls outside the strokes.
+- **Measured:** 跳跳 at 12.0 cm a character, 26 strokes in 232 s; the ink is
+  1.0 mm from the stroke (median, p95 4.5 mm), the feet move at most 3.1 mm while
+  the arm unfolds, and the arm and the brush never pass through the body. One
+  stroke of the 26 is written in two pieces. 无 alone: 12.0 cm, every stroke
+  whole, p95 2.9 mm.
 
 Everything — the planner, the controller, the renders and the stroke data for
 painting the ink in post-production — is in
