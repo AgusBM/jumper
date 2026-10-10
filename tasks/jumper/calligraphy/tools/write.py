@@ -175,6 +175,8 @@ OUTRO_DANCE = (
 OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
 #: The trunk heights the band must hold at when the legs are held (--hold-legs).
 HELD_Z = (0.100, 0.110)           # m
+#: The most any arm joint's command moves in one control step (200 deg/s).
+MAX_DQ = math.radians(4.0)
 #: Off the floor, how far one step may turn the elbow to keep the arm out of the
 #: trunk (`Arm.ik_clear`); on it, BRANCH_JUMP.
 CLEAR_JUMP = math.radians(45.0)
@@ -459,7 +461,9 @@ def main() -> int:
             alt = arm.ik_clear(target, q, BRANCH_JUMP if on_floor else CLEAR_JUMP)
             if alt is not None:
                 q = alt
-        q_cmd = q
+        # Never a jump: a retry from the seed, or the elbow turned out of the trunk,
+        # is followed at MAX_DQ a step, not in one (one went 145 deg in 0.1 s).
+        q_cmd = q_cmd + np.clip(q - q_cmd, -MAX_DQ, MAX_DQ)
         return err
 
     def seed_for(xy_world, base, yaw):
@@ -532,6 +536,20 @@ def main() -> int:
         pose_cmd.values = [0.0, 0.0, 0.0]
         for _ in range(int(OUTRO_HOLD_S / dt)):
             step(OUTRO, k, -1, None, np.nan)
+
+    def reaches_without_jump(target, samples=20):
+        """Whether the arm, from where it is commanded now, follows a straight line
+        of the tip to `target` by small solves only."""
+        qpos, _, _ = state()
+        arm.set_state(qpos)
+        q = q_cmd.copy()
+        a = arm.tip_pos(q)
+        for f in np.linspace(0.0, 1.0, samples)[1:]:
+            q2, err = arm.ik(a + f * (np.asarray(target) - a), q)
+            if err > IK_RETRY or np.abs(q2 - q).max() > BRANCH_JUMP:
+                return False
+            q = q2
+        return True
 
     def clear_high(xy):
         """The height the brush is lifted to over `xy` before the arm folds: HIGH, or
@@ -656,6 +674,21 @@ def main() -> int:
         # unfolding moves the trunk too, so the check before it is not the one
         # that counts. If the stroke no longer fits, fold, nudge and unfold again.
         for cycle in range(UNFOLD_TRIES):
+            if not folded and not reaches_without_jump(above):
+                # Out already, but the next start is not reached from this arm pose
+                # without the solve jumping to another: fold, and unfold along a
+                # planned path. Jumping, the arm swung 145 deg in 0.1 s, struck the
+                # floor and shoved the robot 2 cm (跳跳, clr0.10, after a seam).
+                print(f"\n[write] stretch {k}: the next start needs another arm pose; "
+                      "folding to it")
+                qpos, _, _ = state()
+                arm.set_state(qpos)
+                here = arm.tip_pos(q_cmd)
+                line(here, np.array([*here[:2], clear_high(here[:2])]), REACH_SPEED, FOLD, k,
+                     c.start)
+                untwist(k, c.start)
+                unfold_to(stow, k, c.start, None)
+                folded = True
             if folded:
                 _, _, yaw = state()
                 cy, sy = math.cos(yaw), math.sin(yaw)
