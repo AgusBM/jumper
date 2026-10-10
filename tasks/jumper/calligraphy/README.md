@@ -59,13 +59,15 @@ MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u
   result from above at 1920 x 1080.
 
 Measured (2026-10-10, native:cpu, five_foot's shipped policy, the legs held): 跳跳
-at 12.0 cm a character, 26 strokes, no seam, the ink 1.0 mm from the stroke
-(median, p95 2.9), the claw at least 1.0 mm off the floor and the trunk still to
-0.3 mm while the arm writes, 219 s simulated with the outro; 无 in the same build
-at 12.0 cm, no seam, p95 2.1. That is with the 13 mm hair (see "Where it stands");
-the film in the fork's README was rendered with the 28 mm one, one seam and p95
-4.5. Writing a text this long found four ways for the arm to go through the trunk
-that 无 never had, each fixed where it arose:
+at 12.0 cm a character, 26 strokes, one seam (in the middle of the eighth, where
+the 28 mm hair's run had its one too), the ink 0.9 mm from the stroke (median,
+p95 2.6), 27% of the hair under the floor, the claw at least 4.3 mm off it and the
+trunk still to 0.2 mm while the arm writes, 214 s simulated with the outro
+(belly3_tt); 无 in the same build at 12.0 cm, no seam, p95 2.1 (belly3_wu). That
+is with the bellied 13 mm hair and 5.5 mm strokes (see "Where it stands"); the
+film in the fork's README was rendered with the 28 mm cone and 7.8 mm strokes,
+one seam and p95 4.5. Writing a text this long found four ways for the arm to go
+through the trunk that 无 never had, each fixed where it arose:
 
 - a writing pose in the trunk (the band now rejects one, `Arm.writable`);
 - the lift before a fold raising the elbow into it (`clear_high`);
@@ -229,9 +231,14 @@ python tasks/jumper/calligraphy/tools/write.py --palm-x-min 0.10
 
   Bellied, and with the stroke 5.5 mm instead of 7.8 (`--width` 0.046), 27% of the
   hair is under the floor (median; 49% at most). 无: no seam, the ink 0.7 mm from
-  the stroke (median, p95 2.2), heads 7.5 mm against bodies of 5.5, the claw at
-  least 5.1 mm off the floor, the trunk still to 0.1 mm (belly2_wu, 2026-10-10,
+  the stroke (median, p95 2.1), heads 7.3 mm against bodies of 5.5, the claw at
+  least 5.6 mm off the floor, the trunk still to 0.1 mm (belly3_wu, 2026-10-10,
   native:cpu).
+- The arm writes a stroke in the pose it arrives in, and on some branches the claw
+  is rolled so far that its finger hangs below the hair's tip; the depth limit
+  then holds the brush off the floor. Before a start the controller follows the
+  solve down to the landing and folds to the band's own pose if the claw would
+  not stay 3 mm up -- it cut the first 跳's last stroke twice on nothing before.
 - The arm unfolds and folds around the robot, not through it. The model gives the
   carried arm no contacts with the trunk, the other legs or itself, and the fold
   path was chosen for floor clearance alone: the first unfold of every run swept
