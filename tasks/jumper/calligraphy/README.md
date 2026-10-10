@@ -75,9 +75,9 @@ through the trunk that 无 never had, each fixed where it arose:
   straight up);
 - a solve that still leaves the arm in it (`Arm.ik_clear` turns the elbow out).
 
-With the 28 mm hair the upper arm's hull still grazed the trunk's by up to 4 mm
-for 0.2-0.4 s, where the meshes do not touch; with the 13 mm one nothing of the arm
-comes within the trunk or the other legs. And after a seam the arm once jumped to
+What is left, in some runs, is the upper arm's hull grazing the trunk's by up to
+4.4 mm for up to 1.3 s while a stroke near the robot is written, where the meshes
+do not touch (fin1, belly3_tt; none in claw2_tt). And after a seam the arm once jumped to
 another pose, swinging 145 deg in 0.1 s into the floor: hover moves now fold
 instead when the line to the next start needs another pose, and no arm command
 moves more than 4 deg a step.

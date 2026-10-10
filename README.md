@@ -25,17 +25,19 @@ order, top to bottom — then steps aside, turns to the text, dances and bows.
   profile — pressed in at the start, lifted towards the end.
 - **The arm writes every stroke whole while the body stands still**, the way a
   person writes on a sheet: the robot walks between strokes with the arm folded,
-  unfolds it, and the brush — a black cone of hair gripped in the shut claw —
-  sinks into the stone to make the stroke thicker where it is pressed. The arm
+  unfolds it, and the brush — gripped in the shut claw, its black hair as wide as
+  the handle and drawn to a point — sinks into the stone to make the stroke
+  thicker where it is pressed. The arm
   is moved by inverse kinematics against where the body really is.
 - **The legs stand like a statue while the arm writes.** Jumper's five-legged gait
   (`jumper.five_foot`) walks; once it stops, its last command to the legs is held
   until the arm has folded again, so the feet do not shuffle as the arm swings out.
-- **Measured:** 跳跳 at 12.0 cm a character, 26 strokes in 232 s; the ink is
-  1.0 mm from the stroke (median, p95 4.5 mm), the feet move at most 3.1 mm while
-  the arm unfolds, and the arm and the brush never pass through the body. One
-  stroke of the 26 is written in two pieces. 无 alone: 12.0 cm, every stroke
-  whole, p95 2.9 mm.
+- **Measured:** 跳跳 at 12.0 cm a character, 26 strokes in 214 s; the ink is
+  0.9 mm from the stroke (median, p95 2.6 mm), a quarter of the hair's length goes
+  into the stone (median; half at most), the body moves 0.2 mm while a stroke is
+  written, the feet at most 4.3 mm while the arm unfolds, and the arm and the
+  brush never pass through the body. One stroke of the 26 is written in two
+  pieces. 无 alone: 12.0 cm, every stroke whole, p95 2.1 mm.
 
 Everything — the planner, the controller, the renders and the stroke data for
 painting the ink in post-production — is in
