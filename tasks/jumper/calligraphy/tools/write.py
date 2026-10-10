@@ -848,10 +848,14 @@ def main() -> int:
         line(start, above, REACH_SPEED, REACH, k, c.start)
 
         # lower
-        z0 = -brush.depth_for(s.press[c.start] * width_full, tip_now, base_now)
+        # Set down with the depth correction the last stroke ended on, not from 0: most
+        # of it is the arm sagging ~2 mm below its command, the same from stroke to
+        # stroke, and landing without it made the heads of 无 1.7x its body (9.2 mm
+        # against 5.5, belly_wu, 2026-10-10) for the 0.2 s the integrator took.
+        z0 = max(-brush.depth_for(s.press[c.start] * width_full, tip_now, base_now)
+                 + zcorr[0], -armmod.DEPTH_MAX)
         n = int(LOWER_S / dt)
         corr[:] = 0.0
-        zcorr[:] = 0.0
         z_cmd[:] = armmod.HOVER
         for i in range(1, n + 1):
             f = i / n
