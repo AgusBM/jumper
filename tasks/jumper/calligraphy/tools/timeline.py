@@ -100,6 +100,11 @@ def timeline(run: Path) -> dict:
             rows = np.where(ph == phases.index(name))[0] if name in phases else []
             if len(rows):
                 out[name], out[name + "_end"] = r(t[rows[0]]), r(t[rows[-1]])
+        if "jump" in out:  # the trunk at its highest, against where it stood before
+            rows = np.where(ph == phases.index("jump"))[0]
+            top = rows[np.argmax(log[rows, col["bz"]])]
+            out["apex"] = r(t[top])
+            out["apex_cm"] = r((log[top, col["bz"]] - log[rows[0] - 1, col["bz"]]) * 100)
 
     end = float(t[-1])
     if len(laps):  # the ink dries over the laps, and the film holds FILM_HOLD after
@@ -142,8 +147,9 @@ def main() -> int:
         print(f"{f(o['walk'])}  the outro: it walks to the text's side; the film starts "
               "pulling back")
         if "put" in o:
-            print(f"{f(o['put'])}  it puts the brush down; jumps at {o['jump']:.2f}, back on "
-                  f"its feet by {o['jump_end']:.2f}")
+            print(f"{f(o['put'])}  it puts the brush down; jumps at {o['jump']:.2f}, highest "
+                  f"at {o['apex']:.2f} (+{o['apex_cm']:.0f} cm), back on its feet by "
+                  f"{o['jump_end']:.2f}")
         if "run" in o:
             print(f"{f(o['run'])}  the run: laps around the text while it dries, to "
                   f"{o['run_end']:.2f}")

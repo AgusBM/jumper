@@ -42,7 +42,7 @@ environment already has (2026-10-10).
   ```
 
   `characters[i].start/end`, `seams[]`,
-  `outro.walk/put/jump/jump_end/run/run_end/bow/still`,
+  `outro.walk/put/jump/apex/jump_end/run/run_end/bow/still`,
   `film.text_end/dry/dry_end/end`. Cut from these, never from guessed times.
 - **The pictures** in `docs/media/`: `jumper-hero-en.png` and `jumper-hero-zh.png`
   (2172 x 724 banners, the robot on black and green), `jumper.png`. The other GIFs
@@ -63,12 +63,18 @@ environment already has (2026-10-10).
 `render.py` renders at 960 x 720 by default. For a video to post:
 
 ```bash
-MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py <run> --size 1920x1080 --no-gif
+MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py <run> --size 1920x1080 --no-gif --shots film top
+MUJOCO_GL=egl python tasks/jumper/calligraphy/tools/render.py <run> --size 1920x1080 --no-gif --shots low --fps 50
 ```
 
-It overwrites `film.mp4`, `top.mp4` and `low.mp4` in the run's directory. With
+They overwrite `film.mp4`, `top.mp4` and `low.mp4` in the run's directory. With
 `MUJOCO_GL=egl` and an NVIDIA GPU it takes minutes; on a CPU, hours -- then
-render `--shots film` only.
+render `--shots film` only, and the jump from `film.mp4` at 1x.
+
+`low.mp4` is rendered at 50 fps, the rate `write.py` logs at, for the jump: the
+robot is off the ground for under half a second, and slowed to half speed from
+50 fps it has a new picture in every frame but one in six. Slowing a 30 fps film
+with `minterpolate` instead smeared the robot in the air (tested 2026-10-11).
 
 ## The cut
 
@@ -84,7 +90,7 @@ timeline.
 | 5 | 你 | `film.mp4`, `characters[2]` | 14 | ...and a greeting: 你好 -- hello / 再写一句：你好 |
 | 6 | 好 | `film.mp4`, `characters[3]` | 14 | -- |
 | 7 | it looks | `film.mp4`, `outro.walk` -> `outro.put - 0.5` | 1.5 | -- |
-| 8 | the jump | `film.mp4`, `outro.put - 0.5` -> `outro.jump_end + 0.3` | 1 | 跳 means "to jump". / 跳跳，跳！ |
+| 8 | the jump | `film.mp4`, `outro.put - 0.5` -> `outro.jump`, the brush put down; then `low.mp4`, `outro.apex - 0.8` -> `outro.apex + 0.8` | 1, then 0.5 | 跳 means "to jump". / 跳跳，跳！ |
 | 9 | the run | `film.mp4`, `outro.run` -> `outro.run_end`; cut in 2 s of `low.mp4` where it runs past the camera | 1 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
 | 10 | the bow | `film.mp4`, `outro.bow - 0.5` -> `outro.still + 1` | 1 | A bow to the dry stone. / 向石板鞠躬 |
 | 11 | result | `result.png`, 2.5 s | -- | -- |
@@ -191,6 +197,8 @@ def vertical(src, out):
 
 - A speed that changes inside a shot (the bow at 1x within the dance at 1.5x) is two
   segments joined with a 0.2 s cross-fade.
+- The jump at half speed: `seg(low, a, b, 0.5, out)` -- `setpts=PTS/0.5` from the
+  50 fps `low.mp4`, no interpolation.
 - For the 9:16 version, build the cut without captions, make it vertical, and
   overlay captions drawn at 1080 x 1920 (two lines, 64 px, 300 px from the bottom).
 - Music, if given: `-i music.mp3 -af "afade=t=in:d=1,afade=t=out:st=<T-2>:d=2,loudnorm=I=-14"
