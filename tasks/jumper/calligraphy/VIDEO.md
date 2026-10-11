@@ -29,8 +29,8 @@ environment already has (2026-10-10).
 
 ## What there is
 
-- **The run**, `<run>` -- for the 跳跳 你好 film,
-  `logs/calligraphy/u8df3-u8df3_u4f60-u597d/video`: `film.mp4` (following the
+- **The run**, `<run>` -- the directory `write.py --out` wrote, for the 跳跳 你好
+  film `logs/calligraphy/u8df3-u8df3_u4f60-u597d/<name>`: `film.mp4` (following the
   character being written, then the reveal and the drying), `top.mp4` (overhead,
   fixed), `low.mp4` (low, across the ink, fixed), `jump.mp4` (the brush put
   down and the jump, close, 50 fps), `result.png` (the text from above, 1920 x
@@ -79,8 +79,10 @@ instead smeared the robot in the air (tested 2026-10-11).
 
 ## The cut
 
-About 55 s. Speeds are how much faster than real time; times come from the
-timeline.
+About 56 s. Speeds are how much faster than real time; times come from the
+timeline. On a 跳跳 你好 run with the jump (2026-10-11) these rows add up to 63.7 s
+with the run at 1x, 56.5 s at 1.5x, cross-fades taken off: over 60 s, the 9:16
+version is not a Short.
 
 | # | shot | source, from -> to | speed | caption (English / 中文) |
 |---|---|---|---|---|
@@ -92,7 +94,7 @@ timeline.
 | 6 | 好 | `film.mp4`, `characters[3]` | 14 | -- |
 | 7 | it looks | `film.mp4`, `outro.walk` -> `outro.put - 0.5` | 1.5 | -- |
 | 8 | the jump | `jump.mp4`, from 0.5 s to `outro.apex - 0.8 - outro.jump_clip` (the brush put down), then to `outro.apex + 0.8 - outro.jump_clip` | 1, then 0.5 | 跳 means "to jump". / 跳跳，跳！ |
-| 9 | the run | `film.mp4`, `outro.run` -> `outro.run_end`; cut in 2 s of `low.mp4` where it runs past the camera | 1 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
+| 9 | the run | `film.mp4`, `outro.run` -> `outro.run_end`; cut in 2 s of `low.mp4` where it runs past the camera | 1.5 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
 | 10 | the bow | `film.mp4`, `outro.bow - 0.5` -> `outro.still + 1` | 1 | A bow to the dry stone. / 向石板鞠躬 |
 | 11 | result | `result.png`, 2.5 s | -- | -- |
 | 12 | end card | `jumper-hero-zh.png`, 3.5 s | -- | Open source, no training needed -- github.com/AgusBM/jumper (branch calligraphy) / 开源 · 无需训练 · #Jumper #CrabRobot #OpenSourceRobot |
