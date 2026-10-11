@@ -12,10 +12,12 @@ environment already has (2026-10-10).
   by the audience and 40 % by experts, on appearance, playfulness and usefulness.
 - **The story.** A crab robot is handed a brush. It writes its own name, 跳跳
   (*tiàotiào*, "Jumper"), then 你好 ("hello"); the camera pulls back to the text;
-  the robot looks at it, then runs laps around it, sideways like a crab, while --
-  as 地书 (water calligraphy on stone) does -- the water dries and the words are
-  gone; and it bows to the dry stone. (A run made with `write.py --finale dance`
-  dances beside the text instead, and the water dries after it.)
+  the robot looks at it, puts the brush down and jumps -- 跳 is "to jump" -- then
+  runs laps around it, sideways like a crab, while -- as 地书 (water calligraphy
+  on stone) does -- the water dries and the words are gone; and it bows to the
+  dry stone, its brush lying before it. (A run made with `write.py --no-jump`
+  keeps the brush and has no jump; one made with `--finale dance` dances beside
+  the text instead, and the water dries after it.)
 - **What to deliver**, in `<run>/edit/`:
 
   | file | what |
@@ -39,7 +41,8 @@ environment already has (2026-10-10).
   python tasks/jumper/calligraphy/tools/timeline.py <run> --json > <run>/edit/timeline.json
   ```
 
-  `characters[i].start/end`, `seams[]`, `outro.walk/dance/bow/still`,
+  `characters[i].start/end`, `seams[]`,
+  `outro.walk/put/jump/jump_end/run/run_end/bow/still`,
   `film.text_end/dry/dry_end/end`. Cut from these, never from guessed times.
 - **The pictures** in `docs/media/`: `jumper-hero-en.png` and `jumper-hero-zh.png`
   (2172 x 724 banners, the robot on black and green), `jumper.png`. The other GIFs
@@ -80,11 +83,12 @@ timeline.
 | 4 | 跳 | `top.mp4`, `characters[1]` | 16 | -- |
 | 5 | 你 | `film.mp4`, `characters[2]` | 14 | ...and a greeting: 你好 -- hello / 再写一句：你好 |
 | 6 | 好 | `film.mp4`, `characters[3]` | 14 | -- |
-| 7 | it looks | `film.mp4`, `outro.walk` -> `outro.run` | 1.5 | -- |
-| 8 | the run | `film.mp4`, `outro.run` -> `outro.run_end`; cut in 2 s of `low.mp4` where it runs past the camera | 1 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
-| 9 | the bow | `film.mp4`, `outro.bow - 0.5` -> `outro.still + 1` | 1 | A bow to the dry stone. / 向石板鞠躬 |
-| 10 | result | `result.png`, 2.5 s | -- | -- |
-| 11 | end card | `jumper-hero-zh.png`, 3.5 s | -- | Open source, no training needed -- github.com/AgusBM/jumper (branch calligraphy) / 开源 · 无需训练 · #Jumper #CrabRobot #OpenSourceRobot |
+| 7 | it looks | `film.mp4`, `outro.walk` -> `outro.put - 0.5` | 1.5 | -- |
+| 8 | the jump | `film.mp4`, `outro.put - 0.5` -> `outro.jump_end + 0.3` | 1 | 跳 means "to jump". / 跳跳，跳！ |
+| 9 | the run | `film.mp4`, `outro.run` -> `outro.run_end`; cut in 2 s of `low.mp4` where it runs past the camera | 1 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
+| 10 | the bow | `film.mp4`, `outro.bow - 0.5` -> `outro.still + 1` | 1 | A bow to the dry stone. / 向石板鞠躬 |
+| 11 | result | `result.png`, 2.5 s | -- | -- |
+| 12 | end card | `jumper-hero-zh.png`, 3.5 s | -- | Open source, no training needed -- github.com/AgusBM/jumper (branch calligraphy) / 开源 · 无需训练 · #Jumper #CrabRobot #OpenSourceRobot |
 
 - Cross-fade every cut by 0.5 s, the title and the end card by 0.8 s.
 - **Never slow down within 1.5 s of a seam** (`seams[]`): the arm comes back down to

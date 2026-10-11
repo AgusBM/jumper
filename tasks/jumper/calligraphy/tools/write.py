@@ -62,9 +62,9 @@ REPO = Path(__file__).resolve().parents[4]
 CACHE = REPO / "logs" / "calligraphy" / "cache"
 
 # Phases, as logged.
-WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE, OUTRO, RUN = range(10)
+WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE, OUTRO, RUN, JUMP, PUT = range(12)
 PHASES = ("walk", "settle", "reach", "lower", "write", "lift", "fold", "done", "outro",
-          "run")
+          "run", "jump", "put")
 
 #: Walking: P gains and limits on the velocity command.
 K_POS, V_MAX = 1.5, 0.12          # 1/s, m/s
@@ -188,6 +188,25 @@ RUN_MARGIN = 0.35                  # m
 RUN_LAPS = 2
 RUN_RAMP_S = 1.0                   # s to full speed, and back to none
 RUN_PAUSE_S = 2.0                  # s facing the text, still wet, before the run
+#: Before the run, the robot puts the brush down and jumps (--no-jump leaves it
+#: out): jumper.jump's shipped policy, run here from its deployment contract (the
+#: ONNX, layout.json, the reference) the way the robot's controller runs it -- at
+#: 200 Hz on 2.5 ms physics with kp 20, which this env runs at 50 Hz, 5 ms, kp 10
+#: -- between a JUMP_BLEND_S blend into its stance and one back to five_foot's.
+#: It uses the brush's arm as a leg, and the hair went 25 mm into the floor, so the
+#: brush is put down first: the claw comes down to the stone, and `render.py` lays
+#: the brush there beside it as the jump starts (`render.PUT_ASIDE`) -- the sim
+#: itself has no loose brush. Measured standing in this sim (2026-10-11, native:cpu):
+#: apex 11.4 cm above the stance, landed upright, 1.4 cm and 1.3 deg off where it
+#: took off, and five_foot walked on from it.
+JUMP_POLICY = REPO / "tasks/jumper/jump/out/example"
+JUMP_KP, JUMP_DT = 20.0, 0.0025
+JUMP_BLEND_S = 1.0
+#: With the brush put down, the robot comes back from the laps BOW_BACK behind the
+#: spot it jumped from, to bow with the brush lying before it: at the spot itself
+#: its claw stood 17.7 mm from the brush, and in the film the brush read as back in
+#: the claw (无, 2026-10-11).
+BOW_BACK = 0.12                    # m
 #: The palm's limit when the legs are held (--hold-legs). arm.PALM_X_MIN, 0.13, is
 #: where the shipped policy holds still while it reacts to the arm; held, the legs do
 #: not react, and at 0.10 the band is 200 cm^2 against 176 and 跳跳 12.0 cm against
@@ -310,9 +329,11 @@ def main() -> int:
                     help="stop when the last stroke is written, without walking to the "
                          "text's side for the finale")
     ap.add_argument("--finale", choices=("run", "dance"), default="run",
-                    help="run: laps around the text while its water dries, then a bow; "
-                         "dance: twists, rolls and a bow beside it, the water drying "
-                         "after")
+                    help="run: it puts the brush down, jumps, runs laps around the text "
+                         "while its water dries, and bows; dance: twists, rolls and a bow "
+                         "beside it, the water drying after")
+    ap.add_argument("--no-jump", dest="jump", action="store_false",
+                    help="the run finale without putting the brush down and jumping")
     ap.add_argument("--no-hold-legs", dest="hold_legs", action="store_false",
                     help="let --checkpoint's policy drive the legs while the arm is out, "
                          "instead of holding the walking policy's last action")
@@ -462,6 +483,10 @@ def main() -> int:
         if bool(dones[0]):
             raise RuntimeError(f"the episode ended at t={sim_t:.2f}s in {PHASES[phase]} "
                                f"(stretch {k}): the robot fell or was reset")
+        record(phase, k, sample, target, residual)
+
+    def record(phase, k, sample, target, residual):
+        """Read the brush off the state and log a row, and the state itself."""
         qpos, base, yaw = state()
         arm.set_state(qpos)
         tip = arm.d.site_xpos[arm.tip]
@@ -591,8 +616,10 @@ def main() -> int:
         if args.finale == "run":
             for _ in range(int(RUN_PAUSE_S / dt)):  # it looks at what it wrote
                 step(OUTRO, k, -1, None, np.nan)
+            if args.jump:
+                jump(k)
             run_laps(k)
-            walk(spot, math.pi / 2, k, -1, OUTRO)
+            walk(spot - (0.0, BOW_BACK if args.jump else 0.0), math.pi / 2, k, -1, OUTRO)
             moves = OUTRO_DANCE[-2:]  # the bow, and back up
         for pitch, roll, twist, seconds in moves:
             pose_cmd.values = [math.radians(pitch), math.radians(roll), math.radians(twist)]
@@ -637,7 +664,12 @@ def main() -> int:
             _, base, yaw = state()
             ahead = (i + np.arange(-5, 40)) % len(path)
             j = int(ahead[np.argmin(np.linalg.norm(path[ahead] - base[:2], axis=1))])
-            travelled += seg[(i + np.arange((j - i) % len(path))) % len(path)].sum()
+            # Signed: a point behind is a step back, not a lap ahead -- standing at
+            # the start after the jump, (j - i) % n counted a slip of one point as
+            # a whole lap and the run ended at half its length.
+            back = (i - j) % len(path) < (j - i) % len(path)
+            lo, n = (j, (i - j) % len(path)) if back else (i, (j - i) % len(path))
+            travelled += (-1 if back else 1) * seg[(lo + np.arange(n)) % len(path)].sum()
             i = j
             ramp = min(1.0, (sim_t - t0) / RUN_RAMP_S,
                        (total - travelled) / (RUN_SPEED * RUN_RAMP_S))
@@ -649,6 +681,89 @@ def main() -> int:
             steer.values = [float(cy * v[0] + sy * v[1]), float(-sy * v[0] + cy * v[1]), wz]
             step(RUN, k, -1, None, np.nan)
         steer.values = [0.0, 0.0, 0.0]
+
+    def jump(k):
+        """Into jumper.jump's stance over JUMP_BLEND_S -- the claw comes down to the
+        floor, where the brush is put down (PUT) -- then its policy for the length of
+        its reference and back to five_foot's stance, the arm stowed (JUMP); logged
+        every control step of this sim's own. See JUMP_POLICY."""
+        nonlocal sim_t, obs
+        import onnxruntime as ort
+
+        from tasks.jumper.common.constants import GAIT_JOINTS, HOME
+        from tasks.jumper.jump.mdp.observations import FUTURE_OFFSETS
+        from tasks.jumper.jump.mdp.reference import JUMP_REF_NPZ, JumpReference
+
+        layout = json.loads((JUMP_POLICY / "layout.json").read_text())
+        net = ort.InferenceSession(str(JUMP_POLICY / "actor.onnx"),
+                                   providers=["CPUExecutionProvider"])
+        feed = net.get_inputs()[0].name
+        names = list(robot.joint_names)
+        if list(GAIT_JOINTS) != layout["action_joint_order"]:
+            raise RuntimeError("jumper.jump's layout is not in GAIT_JOINTS order")
+        gait = [names.index(j) for j in GAIT_JOINTS]
+        fingers = [names.index(j) for j in ("LF_J4_joint", "RF_J4_joint")]
+        everything = list(range(len(names)))
+        default = torch.tensor([layout["default_joint_pos"][j] for j in GAIT_JOINTS])
+        home = torch.tensor([HOME[j] for j in GAIT_JOINTS])
+        ref = JumpReference(JUMP_REF_NPZ, "cpu", names)
+        # One fused PD for all 22 joints: its parameters are views of the group's
+        # tensor (mjlab's fused_group.initialize), so writing them in place is enough.
+        servo = robot.actuators[0]
+        kp_walk, dt_walk = float(servo.stiffness[0, 0]), env.sim.mj_model.opt.timestep
+        next_log = [sim_t + dt]
+
+        def physics(target, n, h, phase=JUMP):
+            nonlocal sim_t
+            robot.set_joint_position_target(target[None], joint_ids=everything)
+            for _ in range(n):
+                env.scene.write_data_to_sim()
+                env.sim.step()
+                env.scene.update(dt=h)
+            env.sim.forward()
+            sim_t += n * h
+            while sim_t >= next_log[0] - 1e-9:
+                record(phase, k, -1, None, np.nan)
+                next_log[0] += dt
+
+        def blend(q_to, seconds, h, phase=JUMP):
+            q_from = robot.data.joint_pos[0].clone()
+            n = round(seconds / h)
+            for i in range(1, n + 1):
+                f = i / n
+                physics(q_from + f * f * (3 - 2 * f) * (q_to - q_from), 1, h, phase)
+
+        stance = ref.sample_cmd(torch.tensor([0.0]))[0].clone()
+        stance[fingers] = 0.0
+        blend(stance, JUMP_BLEND_S, dt_walk, PUT)
+        servo.stiffness[:] = JUMP_KP
+        for model in (env.sim.mj_model, *(getattr(env.sim, "_models", None) or [])):
+            model.opt.timestep = JUMP_DT
+        control = 2 * JUMP_DT
+        last = torch.zeros(len(gait))
+        tsg = -ref.t_go
+        for _ in range(round(ref.duration / control)):
+            data = robot.data
+            bias = data.encoder_bias[0, gait]
+            ahead = [ref.sample(ref.index_of(torch.tensor([tsg + o])))["q"][0, gait] - home
+                     for o in FUTURE_OFFSETS]
+            o = torch.cat([data.root_link_ang_vel_b[0], data.projected_gravity_b[0],
+                           data.joint_pos[0, gait] + bias - default, data.joint_vel[0, gait],
+                           last, torch.tensor([min(max(tsg / ref.span, 0.0), 1.0)]),
+                           *ahead])
+            last = torch.from_numpy(net.run(None, {feed: o[None].numpy().astype(np.float32)})[0][0])
+            target = ref.sample_cmd(torch.tensor([tsg + ref.t_go + control]))[0].clone()
+            target[gait] += 0.25 * last - bias
+            target[fingers] = 0.0
+            physics(target, 2, JUMP_DT)
+            tsg += control
+        servo.stiffness[:] = kp_walk
+        for model in (env.sim.mj_model, *(getattr(env.sim, "_models", None) or [])):
+            model.opt.timestep = dt_walk
+        back = robot.data.default_joint_pos[0].clone()
+        back[jids] = torch.tensor([*stow, brush.FINGER_HOLD], dtype=back.dtype)
+        blend(back, JUMP_BLEND_S, dt_walk)
+        obs = wrapped.get_observations()
 
     def reaches_without_jump(target, land=None, samples=20):
         """Whether the arm, from where it is commanded now, follows a straight line
@@ -1079,7 +1194,9 @@ def _report(log: np.ndarray, cols: list[str]) -> None:
         print(f"  ink width while writing: median {np.median(wd):.1f} mm, "
               f"p5-p95 {np.percentile(wd, 5):.1f}-{np.percentile(wd, 95):.1f} mm, "
               f"max depth {w[:, c['depth']].max() * 1000:.1f} mm")
-    off = log[~np.isin(log[:, c["phase"]], (WRITE, LOWER, LIFT))]
+    # Not the jump's either: the brush is put down for it (PUT), and it is drawn
+    # lying on the stone from then on.
+    off = log[~np.isin(log[:, c["phase"]], (WRITE, LOWER, LIFT, PUT, JUMP))]
     print(f"  hair in the floor outside lower/write/lift: {(off[:, c['contact']] > 0).sum()} "
           "steps")
     for k in np.unique(w[:, c["stretch"]]).astype(int):

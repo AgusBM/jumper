@@ -96,6 +96,10 @@ def timeline(run: Path) -> dict:
                "still": r(at), "still_end": r(at + int(write.OUTRO_HOLD_S / dt) * dt)}
         if len(laps):
             out["run"], out["run_end"] = r(t[laps[0]]), r(t[laps[-1]])
+        for name in ("put", "jump"):
+            rows = np.where(ph == phases.index(name))[0] if name in phases else []
+            if len(rows):
+                out[name], out[name + "_end"] = r(t[rows[0]]), r(t[rows[-1]])
 
     end = float(t[-1])
     if len(laps):  # the ink dries over the laps, and the film holds FILM_HOLD after
@@ -137,6 +141,9 @@ def main() -> int:
     if o:
         print(f"{f(o['walk'])}  the outro: it walks to the text's side; the film starts "
               "pulling back")
+        if "put" in o:
+            print(f"{f(o['put'])}  it puts the brush down; jumps at {o['jump']:.2f}, back on "
+                  f"its feet by {o['jump_end']:.2f}")
         if "run" in o:
             print(f"{f(o['run'])}  the run: laps around the text while it dries, to "
                   f"{o['run_end']:.2f}")

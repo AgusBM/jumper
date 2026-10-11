@@ -3,14 +3,15 @@
 Jumper holds a brush in its carried claw and writes Chinese characters on the
 floor, stroke by stroke, the way 地书 (water calligraphy on paving stones) is
 written: walking to where the next stroke can be reached, putting the brush down,
-writing, lifting it. At the end it walks to the text's side, turns to it, dances
--- the body twisting over its feet, a roll, a bow -- and stands while the camera
-pulls back to the whole text.
+writing, lifting it. At the end it walks to the text's side and looks at it, puts
+the brush down, jumps, runs laps around the text while the water dries -- as 地书
+does -- and bows to the dry stone, while the camera pulls back to the whole text.
 
 Nothing has to be trained. `jumper.five_foot`'s shipped policy
 (`tasks/jumper/five_foot/out/example/model_86600.pt`) walks; while the arm is out
 its last action is held, so the legs stand like a statue; the arm is moved by
-inverse kinematics and the walking by a steering loop.
+inverse kinematics and the walking by a steering loop. The jump is `jumper.jump`'s
+(`tasks/jumper/jump/out/example/actor.onnx`).
 
 ## Try it
 
@@ -49,10 +50,13 @@ python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/<ru
   the left one, so the robot stands to the right of what it writes, and in a line
   written left to right that floor is still dry. `--scene beach`, `studio` or
   `none` changes the sky; `--no-outro` stops at the last stroke.
-- The finale: the robot walks to the text's side and looks at it, then runs two
-  laps around it, sideways like a crab and facing it, while the water dries
-  (`render.py` dries the ink over the laps), and bows to the dry stone.
-  `--finale dance` dances beside the text instead, and the water dries after.
+- The finale: the robot walks to the text's side and looks at it, puts the brush
+  down and jumps -- `jumper.jump`'s shipped policy, run from its deployment
+  contract the way the robot runs it -- then runs two laps around the text,
+  sideways like a crab and facing it, while the water dries (`render.py` dries
+  the ink over the laps), and bows to the dry stone, the brush lying before it.
+  `--no-jump` keeps the brush and leaves the jump out; `--finale dance` dances
+  beside the text instead, and the water dries after.
   A run with more than one or two seams (`grep SEAM`) is worth running again.
 
 - To make a video to post from a run -- the films at 1920 x 1080 (`render.py --size

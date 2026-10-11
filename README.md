@@ -18,8 +18,9 @@ In Chinese parks people write characters on the paving stones with a long brush
 dipped in water — 地书, "ground calligraphy" — and the characters dry and vanish.
 This fork teaches Jumper to do the same, in simulation: it holds a brush in its
 claw and writes its own name, **跳跳** (*tiàotiào*), and then **你好** (*nǐ hǎo*,
-"hello"), stroke by stroke and in stroke order — then steps aside, turns to the
-text, dances and bows, and the water dries off the stone.
+"hello"), stroke by stroke and in stroke order — then steps aside to look at the
+text, puts the brush down, jumps (跳 means "to jump"), and runs laps around the
+text while the water dries off the stone, and bows to it.
 
 - **The strokes** come from [Make Me a Hanzi](https://github.com/skishore/makemeahanzi):
   each stroke's median line, smoothed and scaled onto the floor, with a press

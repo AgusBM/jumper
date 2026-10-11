@@ -222,6 +222,15 @@ class Replay:
         laps = (np.where(self.log["phase"] == self.log.phases.index("run"))[0]
                 if "run" in self.log.phases else [])
         self.run = (float(self.t[laps[0]]), float(self.t[laps[-1]])) if len(laps) else None
+        # The brush put down before the jump (write.py --finale run): laid on the
+        # stone over the last PUT_LAY_S before the jump's first row, from where the
+        # claw, come down for the jump, last held it.
+        self.put_down = None
+        if "jump" in self.log.phases:
+            jumped = np.where(self.log["phase"] == self.log.phases.index("jump"))[0]
+            if len(jumped):
+                self.put_down = (float(self.t[jumped[0]]),
+                                 _lying_brush(self.m, self.log.qpos[max(jumped[0] - 1, 0)]))
 
     def at(self, t: float) -> None:
         i = int(np.clip(np.searchsorted(self.t, t), 0, len(self.t) - 1))
@@ -251,6 +260,78 @@ def clear_of_robot(rp: Replay, shot: cameras.Shot, room: float = 0.3) -> cameras
     return dataclasses.replace(shot, distance=d)
 
 
+def _lying_brush(m: mujoco.MjModel, qpos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The brush body's pose lying on the floor, (position, rotation): its axis
+    turned level in the vertical plane it was in, the handle resting on the stone,
+    its middle where it was but PUT_ASIDE out from the claw."""
+    from tasks.jumper.calligraphy import brush
+
+    d = mujoco.MjData(m)
+    d.qpos[:] = qpos
+    mujoco.mj_kinematics(m, d)
+    b = m.body("robot/" + brush.BRUSH_BODY).id
+    rot = d.xmat[b].reshape(3, 3)
+    along = np.array([rot[0, 1], rot[1, 1], 0.0])
+    along /= np.linalg.norm(along)
+    # The brush's own +z, the side away from the forearm the palm is mounted on
+    # (the forearm sits 5 cm down -z of it, in the jump's stance).
+    aside = np.array([rot[0, 2], rot[1, 2], 0.0])
+    aside -= (aside @ along) * along
+    aside /= np.linalg.norm(aside)
+    up = np.array([0.0, 0.0, 1.0])
+    lying = np.column_stack([np.cross(along, up), along, up])
+    mid = (brush.HANDLE_Y[0] + brush.TIP_Y) / 2
+    centre = d.xpos[b] + rot @ np.array([0.0, mid, brush.MOUTH_Z]) + PUT_ASIDE * aside
+    origin = np.array([*(centre[:2] - mid * along[:2]),
+                       brush.HANDLE_RADIUS - brush.MOUTH_Z])
+    return origin, lying
+
+
+def _slerp(a: np.ndarray, b: np.ndarray, f: float) -> np.ndarray:
+    """Rotation matrices: the one f of the way from a to b, about one axis."""
+    qa, qb = np.zeros(4), np.zeros(4)
+    mujoco.mju_mat2Quat(qa, a.ravel())
+    mujoco.mju_mat2Quat(qb, b.ravel())
+    dot = float(qa @ qb)
+    if dot < 0:
+        qb, dot = -qb, -dot
+    w = math.acos(min(dot, 1.0))
+    q = qb if w < 1e-6 else (math.sin((1 - f) * w) * qa + math.sin(f * w) * qb) / math.sin(w)
+    out = np.zeros(9)
+    mujoco.mju_quat2Mat(out, q / np.linalg.norm(q))
+    return out.reshape(3, 3)
+
+
+def _brush_down(rp: Replay, scene, f: float) -> None:
+    """The brush f of the way from the claw onto the stone (Replay.put_down),
+    eased: the scene's own brush geoms, moved as one body -- a geom made anew
+    draws some other mesh unless its dataid is twice the mesh's id, which is
+    MuJoCo's convention in a scene."""
+    from tasks.jumper.calligraphy import brush
+
+    ids = {rp.m.geom("robot/" + n).id for n in brush.GEOMS}
+    geoms = [scene.geoms[i] for i in range(scene.ngeom)
+             if scene.geoms[i].objtype == mujoco.mjtObj.mjOBJ_GEOM
+             and scene.geoms[i].objid in ids]
+    if not geoms:
+        return
+    local = {}
+    for g in ids:
+        q = np.zeros(9)
+        mujoco.mju_quat2Mat(q, rp.m.geom_quat[g])
+        local[g] = (rp.m.geom_pos[g], q.reshape(3, 3))
+    # The body's pose in the claw, from any one of its geoms as the scene drew it.
+    g0 = geoms[0]
+    held_rot = g0.mat.reshape(3, 3) @ local[g0.objid][1].T
+    held_pos = g0.pos - held_rot @ local[g0.objid][0]
+    f = f * f * (3 - 2 * f)
+    pos = held_pos + f * (rp.put_down[1][0] - held_pos)
+    rot = _slerp(held_rot, rp.put_down[1][1], f)
+    for g in geoms:
+        p, r = local[g.objid]
+        g.pos[:], g.mat[:] = pos + rot @ p, rot @ r
+
+
 def text_frame(plan) -> tuple[tuple[float, float], float]:
     """The text's centre and its larger extent: a single character's em square, or
     the whole of a longer text."""
@@ -277,6 +358,8 @@ def frame(rp: Replay, r: mujoco.Renderer, shot: cameras.Shot, cam, pts, t: float
     r.scene.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = False
     if shot.elevation > -60 and not rp.sky:
         _backdrop(r.scene, shot)
+    if rp.put_down is not None and t > rp.put_down[0] - PUT_LAY_S:
+        _brush_down(rp, r.scene, min(1.0, (t - rp.put_down[0] + PUT_LAY_S) / PUT_LAY_S))
     if pts is not None:
         _add_ink(r.scene, pts[:np.searchsorted(pts[:, 0], t, side="right")], dry)
     return r.render()
@@ -366,6 +449,14 @@ def check(rp: Replay, shots) -> float:
     return worst
 
 
+#: The brush the robot puts down before its jump (write.py --finale run) goes from
+#: the claw to lying on the stone over the last PUT_LAY_S before the jump, laid
+#: PUT_ASIDE out from where the claw held it. Laid where it was held, the claw
+#: landed 6.4 mm into it after the jump; 5 cm out, the claw's meshes stay 23 mm off
+#: it through the jump and the whole robot 21 mm through the laps and the bow
+#: (无, 2026-10-11, by the meshes against the lying brush's axis).
+PUT_LAY_S = 0.4                   # s
+PUT_ASIDE = 0.05                  # m
 #: The film: following the character being written from behind the robot's
 #: shoulder, then pulling back to the whole text and the robot beside it.
 #: Steep, so the robot in front of the character does not hide it: at -55 deg,
