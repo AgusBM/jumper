@@ -185,7 +185,9 @@ OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
 #: nearer the box than 11.4 cm; at a 0.30 m margin a foot came within 6.4 cm.
 #: With the brush put down for the jump, the box takes it in too: around the text
 #: alone, the right claw's pad, a foot, came 6.3 mm into it at a corner of 跳跳
-#: 你好's (2026-10-11), the brush lying 4 cm beyond the text's end.
+#: 你好's (2026-10-11), the brush lying 4 cm beyond the text's end; around both, no
+#: part of the robot within 40 mm of it (42.6 mm on 无) and no foot within 66 mm
+#: of the ink, two laps in 21.5 s.
 RUN_SPEED = 0.45                   # m/s, of a ceiling of 0.5
 RUN_MARGIN = 0.35                  # m
 RUN_LAPS = 2
