@@ -8,7 +8,8 @@ without watching seven minutes of one.
 `film.mp4`, `top.mp4` and `low.mp4` all run in real time from the same 0 as the
 log, so one time serves the three. After the log ends `film.mp4` holds on the
 text, lets the ink dry and holds on the dry floor (`render.FILM_HOLD`, `DRY_S`,
-`DRY_HOLD`); `top.mp4` and `low.mp4` hold 2 s.
+`DRY_HOLD`); `top.mp4` and `low.mp4` hold 2 s. `jump.mp4` is the jump alone, in
+real time too, from `outro.jump_clip` of that clock.
 
 Plain numpy: it reads `log.npz` and `plan.json`, and takes the outro's and the
 film's lengths from `write.py` and `render.py` themselves, so they cannot drift.
@@ -105,6 +106,7 @@ def timeline(run: Path) -> dict:
             top = rows[np.argmax(log[rows, col["bz"]])]
             out["apex"] = r(t[top])
             out["apex_cm"] = r((log[top, col["bz"]] - log[rows[0] - 1, col["bz"]]) * 100)
+            out["jump_clip"] = r(out.get("put", out["jump"]) - render.JUMP_PAD[0])
 
     end = float(t[-1])
     if len(laps):  # the ink dries over the laps, and the film holds FILM_HOLD after
@@ -149,7 +151,7 @@ def main() -> int:
         if "put" in o:
             print(f"{f(o['put'])}  it puts the brush down; jumps at {o['jump']:.2f}, highest "
                   f"at {o['apex']:.2f} (+{o['apex_cm']:.0f} cm), back on its feet by "
-                  f"{o['jump_end']:.2f}")
+                  f"{o['jump_end']:.2f}; jump.mp4 starts at {o['jump_clip']:.2f}")
         if "run" in o:
             print(f"{f(o['run'])}  the run: laps around the text while it dries, to "
                   f"{o['run_end']:.2f}")

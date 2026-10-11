@@ -71,6 +71,7 @@ What a run leaves in its directory:
 | `film.mp4` | render | the shot for a video: real time, following the character being written, then pulling back to the whole text and the finale, the water drying off the stone as 地书 does (`--no-dry` keeps the ink) |
 | `result.png` | render | the finished text from above, 1920 x 1080: a thumbnail |
 | `top.mp4`, `low.mp4` | render | overhead and low shots, fixed, real time, ink drawn as it is laid (`--no-ink`: clean plates) |
+| `jump.mp4` | render | the brush put down and the jump, low and close, real time at 50 fps, to be slowed down |
 | `wu.gif` | render | the overhead shot at 6x, 480 x 360, for a README |
 | `ink.json`, `ink.svg` | render | the ink, for a compositor: see [below](#the-ink-for-post-production) |
 | `plan.json`, `stretches.json`, `topview.png` | write | the strokes on the floor, how they were cut into stretches, and where the brush touched |

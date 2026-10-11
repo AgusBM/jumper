@@ -154,6 +154,42 @@ def ink_point(apex: np.ndarray, base: np.ndarray) -> np.ndarray:
     return apex + t * axis
 
 
+#: Put down before the jump (`write.py --finale run`), the brush lies this far out
+#: from where the claw held it. Laid where it was held, the claw landed 6.4 mm into
+#: it after the jump; 5 cm out, its meshes stayed 23.5 mm off it (无, 2026-10-11,
+#: the claw's collision meshes against the lying brush's axis).
+PUT_ASIDE = 0.05                  # m
+
+
+def lying(m: mujoco.MjModel, d: mujoco.MjData,
+          prefix: str = "robot/") -> tuple[np.ndarray, np.ndarray]:
+    """The brush body's pose put down on the floor, (position, rotation), from where
+    the claw holds it in `d` (its kinematics done): the axis turned level in the
+    vertical plane it was in, the handle resting on the stone, the middle where it
+    was but PUT_ASIDE out on the brush's +z, the side away from the forearm (5 cm
+    down -z of it in the jump's stance). The simulation has no loose brush:
+    `render.py` draws it there and `write.py` runs its laps around it."""
+    b = m.body(prefix + BRUSH_BODY).id
+    rot = d.xmat[b].reshape(3, 3)
+    along = np.array([rot[0, 1], rot[1, 1], 0.0])
+    along /= np.linalg.norm(along)
+    aside = np.array([rot[0, 2], rot[1, 2], 0.0])
+    aside -= (aside @ along) * along
+    aside /= np.linalg.norm(aside)
+    up = np.array([0.0, 0.0, 1.0])
+    level = np.column_stack([np.cross(along, up), along, up])
+    mid = (HANDLE_Y[0] + TIP_Y) / 2
+    centre = d.xpos[b] + rot @ np.array([0.0, mid, MOUTH_Z]) + PUT_ASIDE * aside
+    origin = np.array([*(centre[:2] - mid * along[:2]), HANDLE_RADIUS - MOUTH_Z])
+    return origin, level
+
+
+def lying_ends(pose: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+    """(2, 3): the lying brush's handle end and hair tip, world, from `lying`."""
+    origin, rot = pose
+    return np.array([origin + rot @ np.array([0.0, y, MOUTH_Z]) for y in (HANDLE_Y[0], TIP_Y)])
+
+
 def apply(cfg) -> None:
     """Put the brush on `jumper.five_foot`'s robot in `cfg`."""
     robot = cfg.scene.entities["robot"]

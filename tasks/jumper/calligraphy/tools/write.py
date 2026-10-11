@@ -183,6 +183,9 @@ OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
 #: 跳跳 你好's box (2026-10-11, native:cpu, once on the path): at 0.45 m/s two laps
 #: of 3.56 m in 15.2 s, 3.9 cm off the path (median, 4.9 at most), the feet never
 #: nearer the box than 11.4 cm; at a 0.30 m margin a foot came within 6.4 cm.
+#: With the brush put down for the jump, the box takes it in too: around the text
+#: alone, the right claw's pad, a foot, came 6.3 mm into it at a corner of 跳跳
+#: 你好's (2026-10-11), the brush lying 4 cm beyond the text's end.
 RUN_SPEED = 0.45                   # m/s, of a ceiling of 0.5
 RUN_MARGIN = 0.35                  # m
 RUN_LAPS = 2
@@ -195,8 +198,8 @@ RUN_PAUSE_S = 2.0                  # s facing the text, still wet, before the ru
 #: -- between a JUMP_BLEND_S blend into its stance and one back to five_foot's.
 #: It uses the brush's arm as a leg, and the hair went 25 mm into the floor, so the
 #: brush is put down first: the claw comes down to the stone, and `render.py` lays
-#: the brush there beside it as the jump starts (`render.PUT_ASIDE`) -- the sim
-#: itself has no loose brush. Measured standing in this sim (2026-10-11, native:cpu):
+#: the brush there beside it as the jump starts (`brush.lying`) -- the sim itself
+#: has no loose brush. Measured standing in this sim (2026-10-11, native:cpu):
 #: apex 11.4 cm above the stance, landed upright, 1.4 cm and 1.3 deg off where it
 #: took off, and five_foot walked on from it.
 JUMP_POLICY = REPO / "tasks/jumper/jump/out/example"
@@ -205,7 +208,7 @@ JUMP_BLEND_S = 1.0
 #: With the brush put down, the robot comes back from the laps BOW_BACK behind the
 #: spot it jumped from, to bow with the brush lying before it: at the spot itself
 #: its claw stood 17.7 mm from the brush, and in the film the brush read as back in
-#: the claw (无, 2026-10-11).
+#: the claw; 12 cm back, 7-11 cm from it (无, three runs, 2026-10-11).
 BOW_BACK = 0.12                    # m
 #: The palm's limit when the legs are held (--hold-legs). arm.PALM_X_MIN, 0.13, is
 #: where the shipped policy holds still while it reacts to the arm; held, the legs do
@@ -616,9 +619,8 @@ def main() -> int:
         if args.finale == "run":
             for _ in range(int(RUN_PAUSE_S / dt)):  # it looks at what it wrote
                 step(OUTRO, k, -1, None, np.nan)
-            if args.jump:
-                jump(k)
-            run_laps(k)
+            brush_down = jump(k) if args.jump else None
+            run_laps(k, brush_down)
             walk(spot - (0.0, BOW_BACK if args.jump else 0.0), math.pi / 2, k, -1, OUTRO)
             moves = OUTRO_DANCE[-2:]  # the bow, and back up
         for pitch, roll, twist, seconds in moves:
@@ -629,10 +631,10 @@ def main() -> int:
         for _ in range(int(OUTRO_HOLD_S / dt)):
             step(OUTRO, k, -1, None, np.nan)
 
-    def stadium(margin, ds=0.01):
-        """The text's box grown by `margin`, its corners rounded with that radius:
-        points `ds` apart, counter-clockwise from the top right corner's arc."""
-        x0, x1, y0, y1 = plan.bounds()
+    def stadium(box, margin, ds=0.01):
+        """`box` (x0, x1, y0, y1) grown by `margin`, its corners rounded with that
+        radius: points `ds` apart, counter-clockwise from the top right corner's arc."""
+        x0, x1, y0, y1 = box
         corners = ((x1, y1), (x0, y1), (x0, y0), (x1, y0))
         pts = []
         for n, (cx, cy) in enumerate(corners):
@@ -646,13 +648,18 @@ def main() -> int:
                 pts.append(tuple(a + f * (b - a)))
         return np.array(pts)
 
-    def run_laps(k):
-        """RUN_LAPS laps of the stadium around the text, sideways and facing it:
-        the velocity along the path a little ahead plus a pull back onto it,
-        ramped up and down over RUN_RAMP_S, and the heading at the text's centre."""
+    def run_laps(k, also=None):
+        """RUN_LAPS laps of the stadium around the text, and the points `also` (the
+        brush put down), sideways and facing the text: the velocity along the path
+        a little ahead plus a pull back onto it, ramped up and down over
+        RUN_RAMP_S, and the heading at the text's centre."""
         x0, x1, y0, y1 = plan.bounds()
         centre = np.array([(x0 + x1) / 2, (y0 + y1) / 2])
-        path = stadium(RUN_MARGIN)
+        box = (x0, x1, y0, y1)
+        if also is not None:
+            box = (min(x0, *also[:, 0]), max(x1, *also[:, 0]),
+                   min(y0, *also[:, 1]), max(y1, *also[:, 1]))
+        path = stadium(box, RUN_MARGIN)
         tang = np.roll(path, -1, axis=0) - path
         seg = np.linalg.norm(tang, axis=1)
         tang /= seg[:, None]
@@ -686,7 +693,8 @@ def main() -> int:
         """Into jumper.jump's stance over JUMP_BLEND_S -- the claw comes down to the
         floor, where the brush is put down (PUT) -- then its policy for the length of
         its reference and back to five_foot's stance, the arm stowed (JUMP); logged
-        every control step of this sim's own. See JUMP_POLICY."""
+        every control step of this sim's own. See JUMP_POLICY. Returns the ends of
+        the brush where it is put down, (2, 3)."""
         nonlocal sim_t, obs
         import onnxruntime as ort
 
@@ -736,6 +744,8 @@ def main() -> int:
         stance = ref.sample_cmd(torch.tensor([0.0]))[0].clone()
         stance[fingers] = 0.0
         blend(stance, JUMP_BLEND_S, dt_walk, PUT)
+        arm.set_state(state()[0])  # the claw as `render.py` takes it, the last PUT row
+        laid = brush.lying_ends(brush.lying(arm.m, arm.d))
         servo.stiffness[:] = JUMP_KP
         for model in (env.sim.mj_model, *(getattr(env.sim, "_models", None) or [])):
             model.opt.timestep = JUMP_DT
@@ -764,6 +774,7 @@ def main() -> int:
         back[jids] = torch.tensor([*stow, brush.FINGER_HOLD], dtype=back.dtype)
         blend(back, JUMP_BLEND_S, dt_walk)
         obs = wrapped.get_observations()
+        return laid
 
     def reaches_without_jump(target, land=None, samples=20):
         """Whether the arm, from where it is commanded now, follows a straight line

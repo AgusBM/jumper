@@ -14,6 +14,9 @@ Writes into the run's directory:
                         for a video
     top.mp4, low.mp4    the overhead and the low shot, fixed, real time, ink drawn as it
                         is laid (--no-ink for clean plates to composite onto)
+    jump.mp4            the brush put down and the jump (write.py's run finale), low
+                        and close, at 50 fps to be slowed down; from
+                        `outro.put - JUMP_PAD[0]` of the others' clock
     result.png          the finished text from above, 1920 x 1080: a thumbnail
     wu.gif              the overhead shot sped up, small, for the README
     ink.json            every mark: time, floor xy, depth, planned press, width, and its
@@ -226,11 +229,15 @@ class Replay:
         # stone over the last PUT_LAY_S before the jump's first row, from where the
         # claw, come down for the jump, last held it.
         self.put_down = None
+        #: The first row putting the brush down and the last of the jump.
+        self.jump = None
         if "jump" in self.log.phases:
             jumped = np.where(self.log["phase"] == self.log.phases.index("jump"))[0]
+            put = np.where(self.log["phase"] == self.log.phases.index("put"))[0]
             if len(jumped):
                 self.put_down = (float(self.t[jumped[0]]),
                                  _lying_brush(self.m, self.log.qpos[max(jumped[0] - 1, 0)]))
+                self.jump = (int(put[0]) if len(put) else int(jumped[0]), int(jumped[-1]))
 
     def at(self, t: float) -> None:
         i = int(np.clip(np.searchsorted(self.t, t), 0, len(self.t) - 1))
@@ -261,30 +268,13 @@ def clear_of_robot(rp: Replay, shot: cameras.Shot, room: float = 0.3) -> cameras
 
 
 def _lying_brush(m: mujoco.MjModel, qpos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """The brush body's pose lying on the floor, (position, rotation): its axis
-    turned level in the vertical plane it was in, the handle resting on the stone,
-    its middle where it was but PUT_ASIDE out from the claw."""
+    """`brush.lying` from the claw in `qpos`."""
     from tasks.jumper.calligraphy import brush
 
     d = mujoco.MjData(m)
     d.qpos[:] = qpos
     mujoco.mj_kinematics(m, d)
-    b = m.body("robot/" + brush.BRUSH_BODY).id
-    rot = d.xmat[b].reshape(3, 3)
-    along = np.array([rot[0, 1], rot[1, 1], 0.0])
-    along /= np.linalg.norm(along)
-    # The brush's own +z, the side away from the forearm the palm is mounted on
-    # (the forearm sits 5 cm down -z of it, in the jump's stance).
-    aside = np.array([rot[0, 2], rot[1, 2], 0.0])
-    aside -= (aside @ along) * along
-    aside /= np.linalg.norm(aside)
-    up = np.array([0.0, 0.0, 1.0])
-    lying = np.column_stack([np.cross(along, up), along, up])
-    mid = (brush.HANDLE_Y[0] + brush.TIP_Y) / 2
-    centre = d.xpos[b] + rot @ np.array([0.0, mid, brush.MOUTH_Z]) + PUT_ASIDE * aside
-    origin = np.array([*(centre[:2] - mid * along[:2]),
-                       brush.HANDLE_RADIUS - brush.MOUTH_Z])
-    return origin, lying
+    return brush.lying(m, d)
 
 
 def _slerp(a: np.ndarray, b: np.ndarray, f: float) -> np.ndarray:
@@ -450,13 +440,19 @@ def check(rp: Replay, shots) -> float:
 
 
 #: The brush the robot puts down before its jump (write.py --finale run) goes from
-#: the claw to lying on the stone over the last PUT_LAY_S before the jump, laid
-#: PUT_ASIDE out from where the claw held it. Laid where it was held, the claw
-#: landed 6.4 mm into it after the jump; 5 cm out, the claw's meshes stay 23 mm off
-#: it through the jump and the whole robot 21 mm through the laps and the bow
-#: (无, 2026-10-11, by the meshes against the lying brush's axis).
+#: the claw to where `brush.lying` lays it over the last PUT_LAY_S before the jump.
 PUT_LAY_S = 0.4                   # s
-PUT_ASIDE = 0.05                  # m
+#: The jump (write.py's run finale) has a shot of its own, jump.mp4: low, from
+#: behind the robot's left shoulder, the brush put down before it and the text
+#: beyond -- (azimuth from its heading, elevation, both deg; distance, m). The film
+#: sees the jump from high above, where it hardly shows, and the low shot had the
+#: robot half out of frame beside 跳跳 你好 (2026-10-11). At JUMP_FPS, the rate
+#: write.py logs at, it can be slowed to half speed with a new picture in five
+#: frames of six at 30 fps; slowing a 30 fps film with ffmpeg's minterpolate
+#: smeared the robot in the air.
+JUMP_SHOT = (-40.0, -12.0, 0.85)
+JUMP_FPS = 50.0
+JUMP_PAD = (1.5, 1.0)             # s before the put-down and after the jump
 #: The film: following the character being written from behind the robot's
 #: shoulder, then pulling back to the whole text and the robot beside it.
 #: Steep, so the robot in front of the character does not hide it: at -55 deg,
@@ -570,6 +566,36 @@ def render_film(rp: Replay, marks, out: Path, fps: float, dry: bool = True,
     r.close()
 
 
+def jump_shot(rp: Replay, size: tuple[int, int]) -> cameras.Shot:
+    """JUMP_SHOT, on where the robot stood to put the brush down."""
+    i = rp.jump[0]
+    yaw = float(rp.log["byaw"][i])
+    bx, by = float(rp.log["bx"][i]), float(rp.log["by"][i])
+    ahead, look_z = 0.08, 0.12  # m: a little in front of the trunk, half way up the jump
+    az, el, dist = JUMP_SHOT
+    return cameras.Shot("jump", (bx + ahead * math.cos(yaw), by + ahead * math.sin(yaw),
+                                 look_z), dist, math.degrees(yaw) + az, el,
+                        width=size[0], height=size[1])
+
+
+def render_jump(rp: Replay, marks, out: Path, size: tuple[int, int] = (960, 720)) -> None:
+    """jump.mp4: from JUMP_PAD[0] before the brush is put down to JUMP_PAD[1] after
+    the jump, real time, at JUMP_FPS."""
+    import imageio.v2 as imageio
+
+    a, b = float(rp.t[rp.jump[0]]) - JUMP_PAD[0], float(rp.t[rp.jump[1]]) + JUMP_PAD[1]
+    shot = jump_shot(rp, size)
+    r = rp.renderer(shot)
+    cam = shot.mjv_camera()
+    pts = ink_points(marks)
+    writer = imageio.get_writer(out, fps=JUMP_FPS, codec="libx264", quality=8,
+                                macro_block_size=8)
+    for t in np.arange(a, b, 1.0 / JUMP_FPS):
+        writer.append_data(frame(rp, r, shot, cam, pts, t, drying(rp, t)))
+    writer.close()
+    r.close()
+
+
 def render_result(rp: Replay, marks, out: Path) -> None:
     """result.png: the finished text from straight above, 1920 x 1080, and the
     robot beside it if it stands in the frame."""
@@ -590,8 +616,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run", type=Path, help="a write.py output directory")
-    ap.add_argument("--shots", nargs="+", default=["film", "top", "low"],
-                    help="film (following, then the reveal), top, low")
+    ap.add_argument("--shots", nargs="+", default=["film", "top", "low", "jump"],
+                    help="film (following, then the reveal), top, low, jump (when the "
+                         "run has one)")
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--size", default="960x720", metavar="WxH",
                     help="the films' frame, pixels: 1920x1080 for a video to post (the "
@@ -613,8 +640,12 @@ def main() -> int:
     low = clear_of_robot(rp, low)
     shots = {s.name: dataclasses.replace(s, width=size[0], height=size[1])
              for s in (gif_top, low)}
+    fixed = list(shots.values())  # the shots ink.json and --check measure
+    if rp.jump is not None:
+        shots["jump"] = jump_shot(rp, size)
+    args.shots = [n for n in args.shots if n != "jump" or rp.jump is not None]
     if args.check:
-        worst = check(rp, list(shots.values()))
+        worst = check(rp, fixed)
         print(f"worst marker error: {worst:.1f} px")
         # Measured on run7 (2026-10-08): top <= 0.5 px, low 1.4-2.1 px, a residual
         # upward bias of the low shot that is under 1 mm on the floor.
@@ -642,7 +673,7 @@ def main() -> int:
                 r.close()
                 print(f"[render] wrote {path}")
         return 0
-    data = ink.to_json(ms, rp.plan, list(shots.values()))
+    data = ink.to_json(ms, rp.plan, fixed)
     (args.run / "ink.json").write_text(json.dumps(data))
     (args.run / "ink.svg").write_text(ink.to_svg(ms, rp.plan))
     print(f"[render] {len(ms)} marks, {sum(len(m.t) for m in ms)} points -> ink.json, ink.svg")
@@ -655,6 +686,10 @@ def main() -> int:
         path = args.run / f"{name}{suffix}.mp4"
         if name == "film":
             render_film(rp, ms if not args.no_ink else [], path, args.fps, args.dry, size)
+            print(f"[render] wrote {path}")
+            continue
+        if name == "jump":
+            render_jump(rp, ms if not args.no_ink else [], path, size)
             print(f"[render] wrote {path}")
             continue
         render_shot(rp, shots[name], ms, path, args.fps, 1.0, not args.no_ink, dry=args.dry)
