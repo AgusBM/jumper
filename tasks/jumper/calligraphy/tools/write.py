@@ -62,8 +62,9 @@ REPO = Path(__file__).resolve().parents[4]
 CACHE = REPO / "logs" / "calligraphy" / "cache"
 
 # Phases, as logged.
-WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE, OUTRO = range(9)
-PHASES = ("walk", "settle", "reach", "lower", "write", "lift", "fold", "done", "outro")
+WALK, SETTLE, REACH, LOWER, WRITE, LIFT, FOLD, DONE, OUTRO, RUN = range(10)
+PHASES = ("walk", "settle", "reach", "lower", "write", "lift", "fold", "done", "outro",
+          "run")
 
 #: Walking: P gains and limits on the velocity command.
 K_POS, V_MAX = 1.5, 0.12          # 1/s, m/s
@@ -175,6 +176,18 @@ OUTRO_DANCE = (
     (0.0, 0.0, 0.0, 1.0), (15.0, 0.0, 0.0, 1.6), (0.0, 0.0, 0.0, 1.2),
 )
 OUTRO_HOLD_S = 4.0                 # s, standing still, for the reveal
+#: The run finale (--finale run): laps around the text while its water dries
+#: (`render.py` dries the ink over the run), sideways like a crab, facing the
+#: text, then the bow from OUTRO_DANCE. The path is the text's box grown by
+#: RUN_MARGIN with rounded corners. Measured on five_foot's shipped policy around
+#: 跳跳 你好's box (2026-10-11, native:cpu, once on the path): at 0.45 m/s two laps
+#: of 3.56 m in 15.2 s, 3.9 cm off the path (median, 4.9 at most), the feet never
+#: nearer the box than 11.4 cm; at a 0.30 m margin a foot came within 6.4 cm.
+RUN_SPEED = 0.45                   # m/s, of a ceiling of 0.5
+RUN_MARGIN = 0.35                  # m
+RUN_LAPS = 2
+RUN_RAMP_S = 1.0                   # s to full speed, and back to none
+RUN_PAUSE_S = 2.0                  # s facing the text, still wet, before the run
 #: The palm's limit when the legs are held (--hold-legs). arm.PALM_X_MIN, 0.13, is
 #: where the shipped policy holds still while it reacts to the arm; held, the legs do
 #: not react, and at 0.10 the band is 200 cm^2 against 176 and 跳跳 12.0 cm against
@@ -295,7 +308,11 @@ def main() -> int:
                          "(daylight, beach, studio), or none")
     ap.add_argument("--no-outro", dest="outro", action="store_false",
                     help="stop when the last stroke is written, without walking to the "
-                         "text's side to look at it and dance")
+                         "text's side for the finale")
+    ap.add_argument("--finale", choices=("run", "dance"), default="run",
+                    help="run: laps around the text while its water dries, then a bow; "
+                         "dance: twists, rolls and a bow beside it, the water drying "
+                         "after")
     ap.add_argument("--no-hold-legs", dest="hold_legs", action="store_false",
                     help="let --checkpoint's policy drive the legs while the arm is out, "
                          "instead of holding the walking policy's last action")
@@ -433,7 +450,7 @@ def main() -> int:
         hold = torch.tensor([[*q_cmd, brush.FINGER_HOLD]], dtype=torch.float32)
         robot.set_joint_position_target(hold, joint_ids=jids)
         with torch.inference_mode():
-            if phase in (WALK, SETTLE, OUTRO):
+            if phase in (WALK, SETTLE, OUTRO, RUN):
                 action = walk_policy(obs)
                 held[0] = action.clone()
             elif args.hold_legs:
@@ -562,20 +579,76 @@ def main() -> int:
             step(FOLD if target is None else REACH, k, sample, target, np.nan)
 
     def outro(k):
-        """Walk to the text's side, turn to it, and dance: the body twisting over
-        planted feet, then a bow. All of it the walking policy's own; the body-pose
-        command is what the operator's sticks send, inside its standing bands
-        (pitch +-20 deg, twist +-30 deg, slewed at 30 deg/s)."""
+        """Walk to the text's side and turn to it; then either dance -- the body
+        twisting over planted feet, then a bow -- or run laps around the text while
+        its water dries, and bow to the dry stone. All of it the walking policy's
+        own; the body-pose command is what the operator's sticks send, inside its
+        standing bands (pitch +-20 deg, twist +-30 deg, slewed at 30 deg/s)."""
         x0, x1, y0, _ = plan.bounds()
         spot = np.array([(x0 + x1) / 2, y0 - OUTRO_STAND_OFF])
         walk(spot, math.pi / 2, k, -1, OUTRO)
-        for pitch, roll, twist, seconds in OUTRO_DANCE:
+        moves = OUTRO_DANCE
+        if args.finale == "run":
+            for _ in range(int(RUN_PAUSE_S / dt)):  # it looks at what it wrote
+                step(OUTRO, k, -1, None, np.nan)
+            run_laps(k)
+            walk(spot, math.pi / 2, k, -1, OUTRO)
+            moves = OUTRO_DANCE[-2:]  # the bow, and back up
+        for pitch, roll, twist, seconds in moves:
             pose_cmd.values = [math.radians(pitch), math.radians(roll), math.radians(twist)]
             for _ in range(int(seconds / dt)):
                 step(OUTRO, k, -1, None, np.nan)
         pose_cmd.values = [0.0, 0.0, 0.0]
         for _ in range(int(OUTRO_HOLD_S / dt)):
             step(OUTRO, k, -1, None, np.nan)
+
+    def stadium(margin, ds=0.01):
+        """The text's box grown by `margin`, its corners rounded with that radius:
+        points `ds` apart, counter-clockwise from the top right corner's arc."""
+        x0, x1, y0, y1 = plan.bounds()
+        corners = ((x1, y1), (x0, y1), (x0, y0), (x1, y0))
+        pts = []
+        for n, (cx, cy) in enumerate(corners):
+            a0 = n * math.pi / 2
+            for a in np.arange(a0, a0 + math.pi / 2, ds / margin):
+                pts.append((cx + margin * math.cos(a), cy + margin * math.sin(a)))
+            out = margin * np.array([math.cos(a0 + math.pi / 2), math.sin(a0 + math.pi / 2)])
+            a, b = np.array((cx, cy)) + out, np.array(corners[(n + 1) % 4]) + out
+            for f in np.linspace(0.0, 1.0, max(1, int(np.linalg.norm(b - a) / ds)),
+                                 endpoint=False):
+                pts.append(tuple(a + f * (b - a)))
+        return np.array(pts)
+
+    def run_laps(k):
+        """RUN_LAPS laps of the stadium around the text, sideways and facing it:
+        the velocity along the path a little ahead plus a pull back onto it,
+        ramped up and down over RUN_RAMP_S, and the heading at the text's centre."""
+        x0, x1, y0, y1 = plan.bounds()
+        centre = np.array([(x0 + x1) / 2, (y0 + y1) / 2])
+        path = stadium(RUN_MARGIN)
+        tang = np.roll(path, -1, axis=0) - path
+        seg = np.linalg.norm(tang, axis=1)
+        tang /= seg[:, None]
+        total = RUN_LAPS * seg.sum()
+        _, base, _ = state()
+        i = int(np.argmin(np.linalg.norm(path - base[:2], axis=1)))
+        travelled, t0 = 0.0, sim_t
+        while travelled < total:
+            _, base, yaw = state()
+            ahead = (i + np.arange(-5, 40)) % len(path)
+            j = int(ahead[np.argmin(np.linalg.norm(path[ahead] - base[:2], axis=1))])
+            travelled += seg[(i + np.arange((j - i) % len(path))) % len(path)].sum()
+            i = j
+            ramp = min(1.0, (sim_t - t0) / RUN_RAMP_S,
+                       (total - travelled) / (RUN_SPEED * RUN_RAMP_S))
+            v = max(V_MIN, RUN_SPEED * ramp) * tang[(i + 8) % len(path)] \
+                + 2.0 * (path[i] - base[:2])
+            look = centre - base[:2]
+            wz = float(np.clip(3.0 * _wrap(math.atan2(look[1], look[0]) - yaw), -2.0, 2.0))
+            cy, sy = math.cos(yaw), math.sin(yaw)
+            steer.values = [float(cy * v[0] + sy * v[1]), float(-sy * v[0] + cy * v[1]), wz]
+            step(RUN, k, -1, None, np.nan)
+        steer.values = [0.0, 0.0, 0.0]
 
     def reaches_without_jump(target, land=None, samples=20):
         """Whether the arm, from where it is commanded now, follows a straight line

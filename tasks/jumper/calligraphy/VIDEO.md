@@ -11,9 +11,11 @@ environment already has (2026-10-10).
   #CrabRobot #OpenSourceRobot` and mentioning `@KingKong Robotics`; judged 60 %
   by the audience and 40 % by experts, on appearance, playfulness and usefulness.
 - **The story.** A crab robot is handed a brush. It writes its own name, 跳跳
-  (*tiàotiào*, "Jumper"), then 你好 ("hello"); it steps aside, dances and bows; the
-  camera pulls back to the text; and, as 地书 (water calligraphy on stone) does,
-  the water dries and the words are gone.
+  (*tiàotiào*, "Jumper"), then 你好 ("hello"); the camera pulls back to the text;
+  the robot looks at it, then runs laps around it, sideways like a crab, while --
+  as 地书 (water calligraphy on stone) does -- the water dries and the words are
+  gone; and it bows to the dry stone. (A run made with `write.py --finale dance`
+  dances beside the text instead, and the water dries after it.)
 - **What to deliver**, in `<run>/edit/`:
 
   | file | what |
@@ -78,9 +80,9 @@ timeline.
 | 4 | 跳 | `top.mp4`, `characters[1]` | 16 | -- |
 | 5 | 你 | `film.mp4`, `characters[2]` | 14 | ...and a greeting: 你好 -- hello / 再写一句：你好 |
 | 6 | 好 | `film.mp4`, `characters[3]` | 14 | -- |
-| 7 | dance | `film.mp4`, `outro.walk` -> `outro.still` | 1.5 (the bow at 1) | A little dance. A bow. / 跳个舞，鞠个躬 |
-| 8 | reveal | `film.mp4`, `outro.still` -> `film.dry` | 1.5 | -- |
-| 9 | drying | `film.mp4`, `film.dry` -> `film.dry_end` | 1.5 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
+| 7 | it looks | `film.mp4`, `outro.walk` -> `outro.run` | 1.5 | -- |
+| 8 | the run | `film.mp4`, `outro.run` -> `outro.run_end`; cut in 2 s of `low.mp4` where it runs past the camera | 1 | 地书: written with water on stone. It dries, and is gone. / 地书：以水为墨，干了便消失 |
+| 9 | the bow | `film.mp4`, `outro.bow - 0.5` -> `outro.still + 1` | 1 | A bow to the dry stone. / 向石板鞠躬 |
 | 10 | result | `result.png`, 2.5 s | -- | -- |
 | 11 | end card | `jumper-hero-zh.png`, 3.5 s | -- | Open source, no training needed -- github.com/AgusBM/jumper (branch calligraphy) / 开源 · 无需训练 · #Jumper #CrabRobot #OpenSourceRobot |
 

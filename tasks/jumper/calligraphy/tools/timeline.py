@@ -77,12 +77,15 @@ def timeline(run: Path) -> dict:
     # The outro: the walk to the text's side, then the dance from write.OUTRO_DANCE,
     # then OUTRO_HOLD_S standing; the dance starts the last run of outro steps.
     o = np.where(ph == outro)[0]
+    laps = np.where(ph == phases.index("run"))[0] if "run" in phases else np.array([])
     out = {}
     if len(o):
-        breaks = np.where(np.diff(o) > 1)[0]  # the walk ends in a settle, not outro
+        # The moves start the last run of outro steps: a walk ends in a settle.
+        breaks = np.where(np.diff(o) > 1)[0]
         dance = float(t[o[breaks[-1] + 1] if len(breaks) else o[0]])
         moves, at = [], dance
-        for pitch, roll, twist, seconds in write.OUTRO_DANCE:
+        # The run finale bows when it is back: OUTRO_DANCE's last two moves.
+        for pitch, roll, twist, seconds in write.OUTRO_DANCE[-2 if len(laps) else 0:]:
             length = int(seconds / dt) * dt
             name = ("bow" if pitch > 0 else "twist" if twist else "roll" if roll
                     else "upright")
@@ -91,13 +94,20 @@ def timeline(run: Path) -> dict:
         out = {"walk": r(t[o[0]]), "dance": r(dance), "moves": moves,
                "bow": next(m["start"] for m in moves if m["move"] == "bow"),
                "still": r(at), "still_end": r(at + int(write.OUTRO_HOLD_S / dt) * dt)}
+        if len(laps):
+            out["run"], out["run_end"] = r(t[laps[0]]), r(t[laps[-1]])
 
     end = float(t[-1])
-    film = {"reveal": out.get("walk", r(end)), "text_end": r(end),
-            "dry": r(end + render.FILM_HOLD),
-            "dry_end": r(end + render.FILM_HOLD + render.DRY_S),
-            "end": r(end + render.FILM_HOLD + render.DRY_S + render.DRY_HOLD),
-            "end_no_dry": r(end + render.FILM_HOLD)}
+    if len(laps):  # the ink dries over the laps, and the film holds FILM_HOLD after
+        film = {"reveal": out["walk"], "text_end": r(end), "dry": out["run"],
+                "dry_end": out["run_end"], "end": r(end + render.FILM_HOLD),
+                "end_no_dry": r(end + render.FILM_HOLD)}
+    else:
+        film = {"reveal": out.get("walk", r(end)), "text_end": r(end),
+                "dry": r(end + render.FILM_HOLD),
+                "dry_end": r(end + render.FILM_HOLD + render.DRY_S),
+                "end": r(end + render.FILM_HOLD + render.DRY_S + render.DRY_HOLD),
+                "end_no_dry": r(end + render.FILM_HOLD)}
     return {"run": str(run), "text": plan.character, "size_m": r(plan.size),
             "writing": {"start": strokes[0]["start"], "end": strokes[-1]["end"]},
             "characters": characters, "strokes": strokes, "seams": seams,
@@ -127,8 +137,12 @@ def main() -> int:
     if o:
         print(f"{f(o['walk'])}  the outro: it walks to the text's side; the film starts "
               "pulling back")
-        print(f"{f(o['dance'])}  the dance: "
-              + ", ".join(f"{m['move']} {m['start']:.1f}" for m in o["moves"]))
+        if "run" in o:
+            print(f"{f(o['run'])}  the run: laps around the text while it dries, to "
+                  f"{o['run_end']:.2f}")
+        else:
+            print(f"{f(o['dance'])}  the dance: "
+                  + ", ".join(f"{m['move']} {m['start']:.1f}" for m in o["moves"]))
         print(f"{f(o['bow'])}  the bow")
         print(f"{f(o['still'])}  standing still, to {o['still_end']:.2f}")
     fm = tl["film"]

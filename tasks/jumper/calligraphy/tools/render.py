@@ -218,6 +218,10 @@ class Replay:
             raise SystemExit(f"{run}/log.npz has no qpos; rerun write.py")
         self.plan = hanzi.Plan.from_json(json.loads((run / "plan.json").read_text()))
         self.t = self.log["t"]
+        # The run finale's laps (write.py --finale run), which the ink dries over.
+        laps = (np.where(self.log["phase"] == self.log.phases.index("run"))[0]
+                if "run" in self.log.phases else [])
+        self.run = (float(self.t[laps[0]]), float(self.t[laps[-1]])) if len(laps) else None
 
     def at(self, t: float) -> None:
         i = int(np.clip(np.searchsorted(self.t, t), 0, len(self.t) - 1))
@@ -229,6 +233,22 @@ class Replay:
         self.m.vis.global_.offwidth = max(self.m.vis.global_.offwidth, shot.width)
         self.m.vis.global_.offheight = max(self.m.vis.global_.offheight, shot.height)
         return mujoco.Renderer(self.m, shot.height, shot.width, max_geom=20000)
+
+
+def clear_of_robot(rp: Replay, shot: cameras.Shot, room: float = 0.3) -> cameras.Shot:
+    """`shot` moved back along its own line until the robot's trunk, in the outro,
+    never comes within `room` of the camera: running laps around a lone character
+    took the robot through the low camera, 47 cm from 无."""
+    late = np.isin(rp.log["phase"], [rp.log.phases.index(p) for p in ("outro", "run")
+                                     if p in rp.log.phases])
+    if not late.any():
+        return shot
+    trunk = np.column_stack([rp.log["bx"][late], rp.log["by"][late]])
+    d = shot.distance
+    while np.linalg.norm(trunk - dataclasses.replace(shot, distance=d).position()[:2],
+                         axis=1).min() < room:
+        d += 0.05
+    return dataclasses.replace(shot, distance=d)
 
 
 def text_frame(plan) -> tuple[tuple[float, float], float]:
@@ -263,8 +283,10 @@ def frame(rp: Replay, r: mujoco.Renderer, shot: cameras.Shot, cam, pts, t: float
 
 
 def render_shot(rp: Replay, shot: cameras.Shot, marks, out: Path, fps: float, speed: float,
-                with_ink: bool, hold: float = 2.0, scale: float = 1.0) -> list[np.ndarray]:
-    """Frames of one shot; written to `out` as mp4 (or returned for a gif)."""
+                with_ink: bool, hold: float = 2.0, scale: float = 1.0,
+                dry: bool = True) -> list[np.ndarray]:
+    """Frames of one shot; written to `out` as mp4 (or returned for a gif). The
+    ink dries in it only over the run finale's laps."""
     r = rp.renderer(shot)
     cam = shot.mjv_camera()
     # Every inked point once, in time order, so a frame draws a prefix.
@@ -280,7 +302,8 @@ def render_shot(rp: Replay, shot: cameras.Shot, marks, out: Path, fps: float, sp
         writer = imageio.get_writer(out, fps=fps, codec="libx264", quality=8,
                                     macro_block_size=8)
     for k, t in enumerate(times):
-        img = frame(rp, r, shot, cam, pts if with_ink else None, t)
+        img = frame(rp, r, shot, cam, pts if with_ink else None, t,
+                    drying(rp, t) if dry and rp.run is not None else 0.0)
         if scale != 1.0:
             from PIL import Image
 
@@ -377,13 +400,21 @@ def film_track(rp: Replay, times: np.ndarray, size: tuple[int, int] = (960, 720)
         xy = np.concatenate([s.xy for s in plan.strokes if s.char == c])
         centres[c] = (xy.min(0) + xy.max(0)) / 2
     x0, x1, y0, y1 = plan.bounds()
-    # The text and the robot beside it (its trunk at y0 - OUTRO_STAND_OFF).
-    ry0 = y0 - OUTRO_STAND_OFF - 0.12
+    # The text and wherever the robot goes in the outro, its body 15 cm about its
+    # trunk -- beside the text for the dance, all around it for the run.
+    late = np.isin(log["phase"], [log.phases.index(p) for p in ("outro", "run")
+                                  if p in log.phases])
+    if late.any():
+        bx, by = log["bx"][late], log["by"][late]
+        x0, x1 = min(x0, bx.min() - 0.15), max(x1, bx.max() + 0.15)
+        y0, y1 = min(y0, by.min() - 0.15), max(y1, by.max() + 0.15)
+    else:
+        y0 -= OUTRO_STAND_OFF + 0.12
     probe = cameras.Shot("film", (0, 0, 0), 1.0, 0.0, -90.0, width=size[0], height=size[1])
     # Never nearer than a metre: the robot stands 15 cm off the floor, and nearer
     # than that it fills the frame at the edge.
-    reveal_d = max(1.0, 1.3 * _fit_distance(x1 - x0 + 0.08, y1 - ry0 + 0.04, probe))
-    reveal = np.array([(x0 + x1) / 2 - 0.04, (y1 + ry0) / 2, 0.0, reveal_d,
+    reveal_d = max(1.0, 1.3 * _fit_distance(x1 - x0 + 0.08, y1 - y0 + 0.04, probe))
+    reveal = np.array([(x0 + x1) / 2 - 0.04, (y1 + y0) / 2, 0.0, reveal_d,
                        FILM_REVEAL_ELEVATION, 0.0])
     end = rp.t[-1]
     targets = np.zeros((len(times), 6))
@@ -416,9 +447,13 @@ def film_track(rp: Replay, times: np.ndarray, size: tuple[int, int] = (960, 720)
                          width=size[0], height=size[1]) for v in sm]
 
 
-def drying(t: float, end: float) -> float:
-    """How far the ink has dried at film time `t`: 0 until FILM_HOLD after the end."""
-    return float(np.clip((t - end - FILM_HOLD) / DRY_S, 0.0, 1.0))
+def drying(rp: Replay, t: float) -> float:
+    """How far the ink has dried at film time `t`: over the run finale's laps, or
+    else over DRY_S from FILM_HOLD after the log's end."""
+    if rp.run is not None:
+        a, b = rp.run
+        return float(np.clip((t - a) / max(b - a, 1e-6), 0.0, 1.0))
+    return float(np.clip((t - float(rp.t[-1]) - FILM_HOLD) / DRY_S, 0.0, 1.0))
 
 
 def render_film(rp: Replay, marks, out: Path, fps: float, dry: bool = True,
@@ -428,7 +463,7 @@ def render_film(rp: Replay, marks, out: Path, fps: float, dry: bool = True,
     import imageio.v2 as imageio
 
     end = rp.t[-1]
-    after = FILM_HOLD + (DRY_S + DRY_HOLD if dry else 0.0)
+    after = FILM_HOLD + (DRY_S + DRY_HOLD if dry and rp.run is None else 0.0)
     times = np.concatenate([np.arange(0.0, end, 1.0 / fps),
                             end + np.arange(1, int(after * fps) + 1) / fps])
     shots = film_track(rp, times, size)
@@ -437,7 +472,7 @@ def render_film(rp: Replay, marks, out: Path, fps: float, dry: bool = True,
     writer = imageio.get_writer(out, fps=fps, codec="libx264", quality=8, macro_block_size=8)
     for k, (t, shot) in enumerate(zip(times, shots)):
         writer.append_data(frame(rp, r, shot, shot.mjv_camera(), pts, min(t, end),
-                                 drying(t, end) if dry else 0.0))
+                                 drying(rp, t) if dry else 0.0))
         if k % 200 == 0:
             print(f"  film: frame {k}/{len(times)}", flush=True)
     writer.close()
@@ -484,6 +519,7 @@ def main() -> int:
     rp = Replay(args.run)
     size = tuple(int(v) for v in args.size.lower().split("x"))
     gif_top, low = cameras.shots(*text_frame(rp.plan))
+    low = clear_of_robot(rp, low)
     shots = {s.name: dataclasses.replace(s, width=size[0], height=size[1])
              for s in (gif_top, low)}
     if args.check:
@@ -509,7 +545,8 @@ def main() -> int:
                 r = rp.renderer(shot)
                 path = args.run / f"{name}_{t:05.1f}.png"
                 img = frame(rp, r, shot, shot.mjv_camera(), pts, min(t, end),
-                            drying(t, end) if name == "film" and args.dry else 0.0)
+                            drying(rp, t) if (name == "film" or rp.run) and args.dry
+                            else 0.0)
                 Image.fromarray(img).save(path)
                 r.close()
                 print(f"[render] wrote {path}")
@@ -529,12 +566,12 @@ def main() -> int:
             render_film(rp, ms if not args.no_ink else [], path, args.fps, args.dry, size)
             print(f"[render] wrote {path}")
             continue
-        render_shot(rp, shots[name], ms, path, args.fps, 1.0, not args.no_ink)
+        render_shot(rp, shots[name], ms, path, args.fps, 1.0, not args.no_ink, dry=args.dry)
         print(f"[render] wrote {path}")
     if not args.no_gif and not args.no_ink:
         fps = 15.0
         frames = render_shot(rp, gif_top, ms, args.run / "wu.gif", fps, args.gif_speed,
-                             True, hold=2.5, scale=0.5)
+                             True, hold=2.5, scale=0.5, dry=args.dry)
         write_gif(frames, args.run / "wu.gif", fps)
         size = (args.run / "wu.gif").stat().st_size / 1e6
         print(f"[render] wrote {args.run / 'wu.gif'} ({len(frames)} frames, {size:.1f} MB)")

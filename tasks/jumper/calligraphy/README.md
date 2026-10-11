@@ -49,6 +49,10 @@ python tasks/jumper/calligraphy/tools/render.py logs/calligraphy/u8df3-u8df3/<ru
   the left one, so the robot stands to the right of what it writes, and in a line
   written left to right that floor is still dry. `--scene beach`, `studio` or
   `none` changes the sky; `--no-outro` stops at the last stroke.
+- The finale: the robot walks to the text's side and looks at it, then runs two
+  laps around it, sideways like a crab and facing it, while the water dries
+  (`render.py` dries the ink over the laps), and bows to the dry stone.
+  `--finale dance` dances beside the text instead, and the water dries after.
   A run with more than one or two seams (`grep SEAM`) is worth running again.
 
 - To make a video to post from a run -- the films at 1920 x 1080 (`render.py --size
@@ -60,7 +64,7 @@ What a run leaves in its directory:
 
 | file | from | what it is |
 |---|---|---|
-| `film.mp4` | render | the shot for a video: real time, following the character being written, then pulling back to the whole text, five seconds on it, and the water drying off the stone as 地书 does (`--no-dry` ends on the ink) |
+| `film.mp4` | render | the shot for a video: real time, following the character being written, then pulling back to the whole text and the finale, the water drying off the stone as 地书 does (`--no-dry` keeps the ink) |
 | `result.png` | render | the finished text from above, 1920 x 1080: a thumbnail |
 | `top.mp4`, `low.mp4` | render | overhead and low shots, fixed, real time, ink drawn as it is laid (`--no-ink`: clean plates) |
 | `wu.gif` | render | the overhead shot at 6x, 480 x 360, for a README |
